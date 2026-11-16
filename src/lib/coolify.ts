@@ -1,3 +1,4 @@
+import { messageCode as _code, MessageError as _Error, errorMessage } from "@/i18n/translate";
 import { randomUUID } from "node:crypto";
 import { prisma } from "./prisma";
 import { decryptCredential } from "./credentials";
@@ -10,7 +11,7 @@ export async function syncCoolifyConnection(id: string, ownerId: string) {
     where: { id, ownerId, OR: [{ syncLockedUntil: null }, { syncLockedUntil: { lt: now } }] },
     data: { syncLockedUntil: lease, lastAttemptAt: now },
   });
-  if (!claimed.count) return { ok: false, message: "Verbindung nicht gefunden oder Synchronisation läuft bereits." };
+  if (!claimed.count) return { ok: false, message: _code("validation.m64eaf9a7ac") };
   try {
     const connection = await prisma.coolifyConnection.findFirstOrThrow({ where: { id, ownerId } });
     const token = decryptCredential(connection.tokenEncrypted, `${ownerId}:${connection.baseUrl}`);
@@ -20,7 +21,7 @@ export async function syncCoolifyConnection(id: string, ownerId: string) {
       const valid = await tx.coolifyConnection.updateMany({
         where: { id, ownerId, syncLockedUntil: lease }, data: { lastSyncedAt: now, lastError: null },
       });
-      if (!valid.count) throw new Error("Synchronisation wurde zwischenzeitlich ersetzt.");
+      if (!valid.count) throw new _Error("validation.m4fb30271be");
       for (const app of apps) {
         // hiddenAt belongs to Alerd; preserve it across imports and reappearances.
         await tx.coolifyApplication.upsert({
@@ -34,11 +35,11 @@ export async function syncCoolifyConnection(id: string, ownerId: string) {
         data: { missingSince: now },
       });
     }, { timeout: 30_000 });
-    return { ok: true, message: `${apps.length} Apps synchronisiert.` };
+    return { ok: true, message: _code("validation.mc4347ca7e1", { value0: apps.length }) };
   } catch (error) {
     // Only locally controlled error messages reach persistence/UI.
     const message = error instanceof Error && /^(Coolify|Ungültig|Unerwartet|Zugangsdaten|Synchronisation)/.test(error.message)
-      ? error.message : "Synchronisation fehlgeschlagen. Verbindung und Datenbank prüfen.";
+      ? errorMessage(error) : _code("validation.m7207a79508");
     await prisma.coolifyConnection.updateMany({ where: { id, ownerId, syncLockedUntil: lease }, data: { lastError: message } });
     return { ok: false, message };
   } finally {

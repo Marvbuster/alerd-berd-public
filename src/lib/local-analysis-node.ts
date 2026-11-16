@@ -3,6 +3,7 @@ import { sha256hex } from "@/lib/auth";
 import { sendWebPushTo } from "@/lib/alert";
 import { jobLabel, jobPackages } from "@/lib/dependency-target";
 import { dependencyPushText } from "../../scripts/dependency-worker-lib.mjs";
+import { messageCode, recipientLocale } from "../../scripts/i18n.mjs";
 
 const LEASE_MS = 90_000;
 
@@ -42,10 +43,11 @@ export async function heartbeatLocalTask(ownerId: string, taskId: string) {
 // Wie der Worker nach einem Claude-Schritt: Push an die Geräte des Owners und
 // nach dem Fazit den Git-Stand zum Neu-Lesen markieren.
 async function afterLocalStep(jobId: string, status: "READY_FOR_REVIEW" | "LIVE" | "FAILED") {
-  const job = await prisma.dependencyJob.findUnique({ where: { id: jobId }, select: { ownerId: true, applicationId: true, packageName: true, targetVersion: true, packages: true, application: { select: { name: true } } } });
+  const job = await prisma.dependencyJob.findUnique({ where: { id: jobId }, select: { ownerId: true, owner: { select: { locale: true } }, applicationId: true, packageName: true, targetVersion: true, packages: true, application: { select: { name: true } } } });
   if (!job) return;
   if (status === "LIVE") await prisma.repositoryWatch.updateMany({ where: { applicationId: job.applicationId }, data: { lastAttemptAt: null } });
-  const text = dependencyPushText(status, { appName: job.application.name, label: jobLabel(jobPackages(job)) });
+  const locale = recipientLocale(job.owner?.locale);
+  const text = dependencyPushText(status, { appName: job.application.name, label: jobLabel(jobPackages(job), locale) }, locale);
   if (text) await sendWebPushTo(job.ownerId, { ...text, url: `/services#app-${job.applicationId}~chat`, tag: `job-${jobId}` }).catch((error) => console.error("[local-node] push failed", error));
 }
 
@@ -70,10 +72,10 @@ export async function failLocalTask(ownerId: string, taskId: string, error: stri
   const now = new Date();
   const task = await prisma.localAnalysisTask.findFirst({ where: { id: taskId, ownerId, status: "CLAIMED" }, select: { id: true, jobId: true, phase: true } });
   if (!task) return false;
-  const message = `Lokale Node: ${error.slice(0, 500) || "unbekannter Fehler"}`;
+  const message = messageCode("worker.localNodeError", { error: error.slice(0, 500) || messageCode("common.unknownError") });
   const [, , moved] = await prisma.$transaction([
     prisma.localAnalysisTask.update({ where: { id: task.id }, data: { status: "FAILED", lastError: message, completedAt: now, leaseUntil: null } }),
-    prisma.dependencyMessage.create({ data: { jobId: task.jobId, role: "SYSTEM", content: `Worker-Fehler: ${message}` } }),
+    prisma.dependencyMessage.create({ data: { jobId: task.jobId, role: "SYSTEM", content: messageCode("worker.localNodeFailure", { error: message }) } }),
     prisma.dependencyJob.updateMany({ where: { id: task.jobId, ownerId, status: "AWAITING_NODE" }, data: { status: "FAILED", lastError: message } }),
   ]);
   if (moved.count) await afterLocalStep(task.jobId, "FAILED");

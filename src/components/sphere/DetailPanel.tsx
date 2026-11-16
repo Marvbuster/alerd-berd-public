@@ -1,5 +1,8 @@
 "use client";
 
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { type VizNode, STATUS_COLOR } from "@/lib/viz";
@@ -8,6 +11,7 @@ import { MonitorDetail } from "@/components/MonitorDetail";
 // Sphere-View: dieselbe Detail-Basis (MonitorDetail) wie die Detail-Seite,
 // hier nur in eine animierte, glasige Overlay-Karte gewickelt.
 export function DetailPanel({ node, canEdit, onClose }: { node: VizNode; canEdit: boolean; onClose: () => void }) {
+  const _locale = _useLocale();
   const color = STATUS_COLOR[node.status];
   const [shown, setShown] = useState(false);
   const [settled, setSettled] = useState(false); // nach der Anim: transform:none → scharfer Text
@@ -44,9 +48,9 @@ export function DetailPanel({ node, canEdit, onClose }: { node: VizNode; canEdit
           footerActions={
             <>
               {canEdit && (
-                <Link href={`/monitors/${node.id}/edit`} className="btn btn--ghost">Bearbeiten</Link>
+                <Link href={`/monitors/${node.id}/edit`} className="btn btn--ghost">{_t(_locale, "sphere_DetailPanel.m84e45ee734")}</Link>
               )}
-              <button onClick={onClose} className="btn btn--ghost">Schließen</button>
+              <button onClick={onClose} className="btn btn--ghost">{_t(_locale, "sphere_DetailPanel.mb808f6e970")}</button>
             </>
           }
         />

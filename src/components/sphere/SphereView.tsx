@@ -1,5 +1,8 @@
 "use client";
 
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
+
 import { useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -9,16 +12,22 @@ import { DetailPanel } from "./DetailPanel";
 
 const Scene = dynamic(() => import("./Scene").then((m) => m.Scene), {
   ssr: false,
-  loading: () => (
-    <div className="absolute inset-0 grid place-items-center text-sm text-[var(--fg-dim)]">
-      <span>
-        Live-Ansicht wird geladen …
-      </span>
-    </div>
-  ),
+  loading: LoadingScene,
 });
 
-export function SphereView({ nodes: initial, canEdit, backHref = "/", backLabel = "◀ Monitore" }: { nodes: VizNode[]; canEdit: boolean; backHref?: string; backLabel?: string }) {
+function LoadingScene() {
+  const _locale = _useLocale();
+  return (
+    <div className="absolute inset-0 grid place-items-center text-sm text-[var(--fg-dim)]">
+      <span>
+        {_t(_locale, "sphere_SphereView.m6b4f87bbea")}</span>
+    </div>
+  );
+}
+
+export function SphereView({ nodes: initial, canEdit, backHref = "/", backLabel: backLabelProp }: { nodes: VizNode[]; canEdit: boolean; backHref?: string; backLabel?: string }) {
+  const _locale = _useLocale();
+  const backLabel = backLabelProp ?? _t(_locale, "sphere_SphereView.m5a65514d86");
   const nodes = useLiveNodes(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const sel = nodes.find((n) => n.id === selectedId) ?? null;
@@ -36,7 +45,7 @@ export function SphereView({ nodes: initial, canEdit, backHref = "/", backLabel 
 
       <div className="pointer-events-none absolute right-4 top-4 flex flex-col items-end gap-2 text-xs">
         <div className="pointer-events-auto flex items-center gap-3">
-          <span className="font-medium text-[var(--fg)]">live sphere</span>
+          <span className="font-medium text-[var(--fg)]">{_t(_locale, "sphere_SphereView.m94b6ef8b1d")}</span>
           <Link href={backHref} className="btn btn--ghost">{backLabel}</Link>
         </div>
         <div className="panel flex items-center gap-x-4 px-3 py-2">
@@ -50,7 +59,7 @@ export function SphereView({ nodes: initial, canEdit, backHref = "/", backLabel 
       </div>
 
       <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] font-medium text-[var(--fg-dim)]">
-        {sel ? "Außerhalb klicken zum Schließen" : "Ziehen zum Drehen · Scrollen zum Zoomen · Dienst anklicken"}
+        {sel ? _t(_locale, "sphere_SphereView.ma8f7887449") : _t(_locale, "sphere_SphereView.m0bcb41e595")}
       </div>
 
       {sel && <DetailPanel node={sel} canEdit={canEdit} onClose={() => setSelectedId(null)} />}

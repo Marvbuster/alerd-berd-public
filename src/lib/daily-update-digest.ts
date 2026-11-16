@@ -1,3 +1,6 @@
+import { localizedTitle } from "@/i18n/data";
+
+import { translate as _t, recipientLocale } from "../../scripts/i18n.mjs";
 // Einmal täglich fasst Alerd reife, wirklich auswählbare Dependency-Updates
 // zusammen. Der Scheduler kann diese Funktion mehrfach aufrufen: die DB-Unique
 // Constraint macht jeden Versand pro Kanal und Berliner Tag idempotent.
@@ -7,6 +10,7 @@ import { sendToChannel } from "@/lib/alert";
 import { loadServices } from "@/lib/services";
 import { majorIssuesLine } from "@/lib/major-issues";
 import { publicUrl } from "@/lib/public-url";
+import { intlLocale } from "@/i18n/locale";
 
 const TZ = "Europe/Berlin";
 
@@ -52,21 +56,21 @@ export function groupDigest(items: DigestItem[]): { shared: DigestGroup[]; singl
   return { shared: [...shared.values()], single };
 }
 
-const kindLabel = (p: DigestPkg) => p.recommended ? `Major, ${p.hold ? "abwarten" : "empfohlen"}: ${p.recommended}` : null;
-const serviceList = (g: DigestGroup) => g.services.map((s) => s.from === g.from ? s.service : `${s.service} (von ${s.from || "?"})`).join(", ");
+const kindLabel = (p: DigestPkg, locale = "de") => p.recommended ? _t(locale, p.hold ? "mail.majorHold" : "mail.majorRecommended", { title: p.recommended }) : null;
+const serviceList = (g: DigestGroup, locale = "de") => g.services.map((s) => s.from === g.from ? s.service : _t(locale, "mail.serviceFrom", { name: s.service, from: s.from || "?" })).join(", ");
 
-function textPkg(p: DigestPkg, from: string) {
-  const kind = kindLabel(p);
-  return `  • ${p.name}: ${from || "?"} → ${p.to}${p.security ? " (Sicherheit)" : p.minor ? " (Minor)" : ""}${kind ? ` (${kind})` : ""}${p.issues ? `\n      ${p.issues}${p.issuesUrl ? `: ${p.issuesUrl}` : ""}` : ""}${(p.known ?? []).map((k) => `\n      Bekanntes Problem: ${k}`).join("")}`;
+function textPkg(p: DigestPkg, from: string, _locale: string = "de") {
+  const kind = kindLabel(p, _locale);
+  return `  • ${p.name}: ${from || "?"} → ${p.to}${p.security ? _t(_locale, "mail.m66de682078") : p.minor ? " (Minor)" : ""}${kind ? ` (${kind})` : ""}${p.issues ? `\n      ${p.issues}${p.issuesUrl ? `: ${p.issuesUrl}` : ""}` : ""}${(p.known ?? []).map((k) => _t(_locale, "mail.mff541979d5", { value0: k })).join("")}`;
 }
 
-function textDigest(items: DigestItem[]) {
-  if (!items.length) return "AlerdReperd\n\nGuten Morgen! Für deine Dienste sind heute keine reifen Paket-Updates offen.\n\nAlerd Berd";
+function textDigest(items: DigestItem[], _locale: string = "de") {
+  if (!items.length) return _t(_locale, "mail.me6f7a63c32");
   const { shared, single } = groupDigest(items);
-  return ["AlerdReperd", "", "Guten Morgen! Diese Dependency-Updates sind bereit zur Prüfung:", "",
-    ...(shared.length ? ["In mehreren Diensten", ...shared.flatMap((g) => [textPkg(g.pkg, g.from), `      In ${g.services.length} Diensten: ${serviceList(g)}`]), ""] : []),
-    ...single.flatMap((item) => [item.service, ...item.packages.map((p) => textPkg(p, p.from)), ""]),
-    "", `Öffne Alerd Berd, um die Analyse zu starten: ${PUBLIC_URL}/services`, "Jeder Commit und Push braucht weiterhin deine Freigabe.", "", "Alerd Berd"].join("\n");
+  return [_t(_locale, "mail.m5e3a170e35"), "", _t(_locale, "mail.me82ea33e8b"), "",
+    ...(shared.length ? [_t(_locale, "mail.m34b277d816"), ...shared.flatMap((g) => [textPkg(g.pkg, g.from, _locale), _t(_locale, "mail.m3f3b7b014d", { value0: g.services.length, value1: serviceList(g, _locale) })]), ""] : []),
+    ...single.flatMap((item) => [item.service, ...item.packages.map((p) => textPkg(p, p.from, _locale)), ""]),
+    "", _t(_locale, "mail.mde68cb7681", { value0: PUBLIC_URL }), _t(_locale, "mail.me2ff8f1d55"), "", "Alerd Berd"].join("\n");
 }
 
 function esc(value: string) { return value.replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c); }
@@ -79,53 +83,48 @@ function wordmark(bold: string, light: string, size: number) {
   return `<span style="font-size:${size}px;font-weight:800;letter-spacing:-0.5px;color:${C.fg}">${bold}<span style="font-weight:400;color:${C.dim}">${light}</span></span>`;
 }
 
-function htmlPkg(p: DigestPkg, from: string, extra = "") {
-  const kind = kindLabel(p);
-  return `<div style="margin-top:7px;color:${C.dim};font-size:14px"><code style="color:${C.fg};font-family:Menlo,Consolas,monospace">${esc(p.name)}</code> &nbsp;${esc(from || "?")} → <strong style="color:${C.cyan}">${esc(p.to)}</strong>${p.security ? ` &nbsp;<span style="color:${C.red};border:1px solid ${C.red};border-radius:6px;padding:1px 6px;font-size:11px">Sicherheit</span>` : p.minor ? ` &nbsp;<span style="color:${C.dim};border:1px solid ${C.line};border-radius:6px;padding:1px 6px;font-size:11px">Minor</span>` : ""}${kind ? `<div style="margin-top:3px;color:${p.hold ? C.red : C.dim};font-size:13px">${esc(kind)}</div>` : ""}${p.issues ? `<div style="margin-top:3px;font-size:13px">${p.issuesUrl ? `<a href="${esc(p.issuesUrl)}" style="color:${C.dim}">${esc(p.issues)}</a>` : `<span style="color:${C.dim}">${esc(p.issues)}</span>`}</div>` : ""}${(p.known ?? []).map((k) => `<div style="margin-top:3px;color:${C.red};font-size:13px">Bekanntes Problem: ${esc(k)}</div>`).join("")}${extra}</div>`;
+function htmlPkg(p: DigestPkg, from: string, extra = "", _locale: string = "de") {
+  const kind = kindLabel(p, _locale);
+  return `<div style="margin-top:7px;color:${C.dim};font-size:14px"><code style="color:${C.fg};font-family:Menlo,Consolas,monospace">${esc(p.name)}</code> &nbsp;${esc(from || "?")} → <strong style="color:${C.cyan}">${esc(p.to)}</strong>${p.security ? _t(_locale, "mail.ma1d6d52d2c", { value0: C.red, value1: C.red }) : p.minor ? ` &nbsp;<span style="color:${C.dim};border:1px solid ${C.line};border-radius:6px;padding:1px 6px;font-size:11px">Minor</span>` : ""}${kind ? `<div style="margin-top:3px;color:${p.hold ? C.red : C.dim};font-size:13px">${esc(kind)}</div>` : ""}${p.issues ? `<div style="margin-top:3px;font-size:13px">${p.issuesUrl ? `<a href="${esc(p.issuesUrl)}" style="color:${C.dim}">${esc(p.issues)}</a>` : `<span style="color:${C.dim}">${esc(p.issues)}</span>`}</div>` : ""}${(p.known ?? []).map((k) => _t(_locale, "mail.mf9d1c731b2", { value0: C.red, value1: esc(k) })).join("")}${extra}</div>`;
 }
 
-export function htmlDigest(items: DigestItem[], now: Date) {
-  const day = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(now);
+export function htmlDigest(items: DigestItem[], now: Date, _locale: string = "de") {
+  const day = new Intl.DateTimeFormat(intlLocale(_locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(now);
   const count = items.reduce((total, item) => total + item.packages.length, 0);
   const { shared, single } = groupDigest(items);
   const block = (head: string, body: string) => `<tr><td style="padding:18px 24px;border-top:1px solid ${C.line}"><strong style="color:${C.fg};font-size:15px">${head}</strong>${body}</td></tr>`;
   const rows = items.length
-    ? (shared.length ? block("In mehreren Diensten", shared.map((g) => htmlPkg(g.pkg, g.from, `<div style="margin-top:3px;color:${C.fg};font-size:13px">In ${g.services.length} Diensten: ${esc(serviceList(g))}</div>`)).join("")) : "")
-      + single.map((item) => block(esc(item.service), item.packages.map((p) => htmlPkg(p, p.from)).join(""))).join("")
-    : `<tr><td style="padding:28px 24px;border-top:1px solid ${C.line};color:${C.dim}">Keine reifen Paket-Updates offen. Schön ruhig heute.</td></tr>`;
-  return `<!doctype html><html lang="de"><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"></head><body style="margin:0;background:${C.bg};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:${C.fg}"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${C.bg}"><tr><td style="padding:28px 12px">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:auto;background:${C.panel};border:1px solid ${C.line};border-radius:16px;overflow:hidden">
-<tr><td style="padding:28px 24px 22px"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="vertical-align:middle;padding-right:12px"><img src="${PUBLIC_URL}/alerd-logo.png" width="56" height="56" alt="" style="display:block;border:0"></td><td style="vertical-align:middle">${wordmark("Alerd", "Reperd", 30)}</td></tr></table>
-<p style="margin:16px 0 0;font-size:17px;font-weight:700;color:${C.fg}">Deine Updates für ${esc(day)}</p><p style="margin:4px 0 0;color:${C.dim};font-size:14px">${items.length ? `${count} Paket${count === 1 ? "" : "e"} in ${items.length} Dienst${items.length === 1 ? "" : "en"}` : "Alles aktuell"}</p></td></tr>
-${rows}
-<tr><td style="padding:22px 24px;border-top:1px solid ${C.line}"><a href="${PUBLIC_URL}/services" style="display:inline-block;background:${C.cyan};color:#09212b;font-weight:700;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:10px">Dienste öffnen</a><p style="margin:16px 0 0;color:${C.dim};font-size:13px;line-height:1.5">Alerd aktualisiert nie automatisch: Analyse, Vorbereitung sowie Commit &amp; Push bleiben einzeln freigegeben.</p></td></tr>
-</table><p style="max-width:620px;margin:16px auto 0;text-align:center">${wordmark("Alerd", "Berd", 14)}</p></td></tr></table></body></html>`;
+    ? (shared.length ? block(_t(_locale, "mail.m34b277d816"), shared.map((g) => htmlPkg(g.pkg, g.from, _t(_locale, "mail.m43bafd1a47", { value0: C.fg, value1: g.services.length, value2: esc(serviceList(g, _locale)) }), _locale)).join("")) : "")
+      + single.map((item) => block(esc(item.service), item.packages.map((p) => htmlPkg(p, p.from, "", _locale)).join(""))).join("")
+    : _t(_locale, "mail.m33b818db79", { value0: C.line, value1: C.dim });
+  return _t(_locale, "mail.m802577e107", { value0: C.bg, value1: C.fg, value2: C.bg, value3: C.panel, value4: C.line, value5: PUBLIC_URL, value6: wordmark("Alerd", "Reperd", 30), value7: C.fg, value8: esc(day), value9: C.dim, value10: items.length ? _t(_locale, "mail.summary", { count, packageSuffix: count === 1 ? "" : _locale === "en" ? "s" : "e", services: items.length, serviceSuffix: items.length === 1 ? "" : _locale === "en" ? "s" : "en" }) : _t(_locale, "mail.allCurrent"), value11: rows, value12: C.line, value13: PUBLIC_URL, value14: C.cyan, value15: C.dim, value16: wordmark("Alerd", "Berd", 14) });
 }
 
-export async function sendDueDailyUpdateDigests(now = new Date()): Promise<{ sent: number; skipped: boolean }> {
+export async function sendDueDailyUpdateDigests(now = new Date(), _locale: string = "de"): Promise<{ sent: number; skipped: boolean }> {
   const when = berlin(now);
   // Ab 08:00 verschicken wir beim ersten erfolgreichen Scheduler-Lauf. Das ist
   // robuster als ein enges Minutenfenster bei Deploys oder kurzen Ausfällen.
   if (when.hour < 8) return { sent: 0, skipped: true };
-  const owners = await prisma.user.findMany({ where: { active: true, dailyUpdateDigest: true, channels: { some: { enabled: true, kind: "EMAIL" } } }, select: { id: true, channels: { where: { enabled: true, kind: "EMAIL" } } } });
+  const owners = await prisma.user.findMany({ where: { active: true, dailyUpdateDigest: true, channels: { some: { enabled: true, kind: "EMAIL" } } }, select: { id: true, locale: true, channels: { where: { enabled: true, kind: "EMAIL" } } } });
   let sent = 0;
   for (const owner of owners) {
+    const _locale = recipientLocale(owner.locale);
     // Erst prüfen, ob heute schon alles erledigt ist. Sonst liefe die teure
     // Dienste-Sicht ab 8 Uhr bei jedem Check-Lauf für jeden Nutzer.
     const done = await prisma.dailyUpdateDigest.findMany({ where: { ownerId: owner.id, day: when.day }, select: { channelId: true } });
     const open = owner.channels.filter((channel) => !done.some((d) => d.channelId === channel.id));
     if (!open.length) continue;
     const { services } = await loadServices(owner.id, now);
-    const items: DigestItem[] = services.map((service) => ({ service: service.name, packages: service.candidates.map((candidate) => ({ name: candidate.name, from: candidate.from, to: candidate.to, security: candidate.security || candidate.critical, minor: candidate.jump === "minor", recommended: candidate.recommended?.title, hold: candidate.recommended?.hold,
-      issues: candidate.recommended?.issues ? majorIssuesLine(candidate.recommended.issues) : undefined, issuesUrl: candidate.recommended?.issues?.searchUrl,
-      known: candidate.knownIssues?.map((k) => k.title) })) })).filter((item) => item.packages.length);
+    const items: DigestItem[] = services.map((service) => ({ service: service.name, packages: service.candidates.map((candidate) => ({ name: candidate.name, from: candidate.from, to: candidate.to, security: candidate.security || candidate.critical, minor: candidate.jump === "minor", recommended: (candidate.recommended ? localizedTitle(candidate.recommended, _locale) : undefined), hold: candidate.recommended?.hold,
+      issues: candidate.recommended?.issues ? majorIssuesLine(candidate.recommended.issues, _locale) : undefined, issuesUrl: candidate.recommended?.issues?.searchUrl,
+      known: candidate.knownIssues?.map((k) => localizedTitle(k, _locale)) })) })).filter((item) => item.packages.length);
     // Nichts offen: keine Mail, aber für heute vermerken, damit nicht erneut gerechnet wird.
     if (!items.length) {
       await prisma.dailyUpdateDigest.createMany({ data: open.map((channel) => ({ ownerId: owner.id, channelId: channel.id, day: when.day, success: true, detail: "nichts offen, keine Mail" })), skipDuplicates: true });
       continue;
     }
-    const subject = items.length ? `AlerdReperd: ${items.reduce((total, item) => total + item.packages.length, 0)} Paket-Update${items.reduce((total, item) => total + item.packages.length, 0) === 1 ? "" : "s"} bereit` : "AlerdReperd: keine Paket-Updates offen";
-    const text = textDigest(items), html = htmlDigest(items, now);
+    const subject = items.length ? _t(_locale, "mail.m4af3cfbda3", { value0: items.reduce((total, item) => total + item.packages.length, 0), value1: items.reduce((total, item) => total + item.packages.length, 0) === 1 ? "" : "s" }) : _t(_locale, "mail.mffbbdf3bc0");
+    const text = textDigest(items, _locale), html = htmlDigest(items, now, _locale);
     for (const channel of open) {
       try {
         await prisma.dailyUpdateDigest.create({ data: { ownerId: owner.id, channelId: channel.id, day: when.day, success: false } });

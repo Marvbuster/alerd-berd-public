@@ -1,5 +1,7 @@
 "use server";
 
+import { messageCode as _code } from "@/i18n/translate";
+
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
@@ -33,7 +35,7 @@ function int(fd: FormData, key: string): number | null {
 // kein Infoleak über fremde Datensätze). Gibt die geprüfte id zurück.
 async function ownMonitor(id: string, ownerId: string): Promise<void> {
   const m = await prisma.monitor.findFirst({ where: { id, ownerId }, select: { id: true } });
-  if (!m) throw new Error("Monitor nicht gefunden.");
+  if (!m) throw new Error(_code("actions.mbd50a33aae"));
 }
 
 // Baut das Prisma-Datenobjekt aus dem Formular. Nur für die gewählte Art
@@ -44,8 +46,8 @@ function parseForm(fd: FormData): Prisma.MonitorUncheckedCreateInput {
   const kindRaw = str(fd, "kind") ?? "HEALTH";
   const kind = (KINDS.includes(kindRaw as MonitorKind) ? kindRaw : "HEALTH") as MonitorKind;
 
-  if (!name) throw new Error("Name ist Pflicht.");
-  if (!target) throw new Error("Ziel (target) ist Pflicht.");
+  if (!name) throw new Error(_code("actions.m59f13e83da"));
+  if (!target) throw new Error(_code("actions.mc414528e8c"));
 
   return {
     name,
@@ -134,7 +136,7 @@ export async function addEmailChannel(fd: FormData) {
   const user = await requireUser();
   const to = str(fd, "email");
   const label = str(fd, "label") ?? (to ?? "E-Mail");
-  if (!to) throw new Error("E-Mail-Adresse fehlt.");
+  if (!to) throw new Error(_code("actions.mbda1bc1d32"));
   await prisma.alertChannel.create({ data: { kind: "EMAIL", label, config: { to }, ownerId: user.id } });
   revalidatePath("/settings");
 }
@@ -142,14 +144,14 @@ export async function addEmailChannel(fd: FormData) {
 export async function toggleChannel(id: string, enabled: boolean) {
   const user = await requireUser();
   const res = await prisma.alertChannel.updateMany({ where: { id, ownerId: user.id }, data: { enabled } });
-  if (res.count === 0) throw new Error("Kanal nicht gefunden.");
+  if (res.count === 0) throw new Error(_code("actions.mff96fbbd53"));
   revalidatePath("/settings");
 }
 
 export async function deleteChannel(id: string) {
   const user = await requireUser();
   const res = await prisma.alertChannel.deleteMany({ where: { id, ownerId: user.id } });
-  if (res.count === 0) throw new Error("Kanal nicht gefunden.");
+  if (res.count === 0) throw new Error(_code("actions.mff96fbbd53"));
   revalidatePath("/settings");
 }
 
@@ -168,7 +170,7 @@ export async function resolvePushMonitor(id: string) {
   if (!monitor || monitor.currentStatus === "UP") return;
   await applyResult(monitor, {
     status: "UP", responseMs: null, statusCode: null, error: null,
-    payload: { success: true, event: "manual_resolved", message: `Von Hand als behoben markiert (${user.email})` },
+    payload: { success: true, event: "manual_resolved", message: _code("actions.manuallyResolved", { email: user.email }) },
   });
   revalidatePath(`/monitors/${id}`); revalidatePath("/services");
 }

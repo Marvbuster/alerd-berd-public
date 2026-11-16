@@ -7,7 +7,9 @@
       "range": ">=7.0.0 <7.1.0",
       "kind": "build-trap",
       "title": "typescript-eslint unterstützt TS 7.0 nicht, eslint bricht mit „typescript-eslint does not support TS 7.0“ ab",
+      "titleEn": "typescript-eslint does not support TS 7.0; eslint fails with “typescript-eslint does not support TS 7.0”",
       "hint": "Typecheck und next build laufen, nur Lint nicht. Bis zur Unterstützung auf 5.9 bleiben oder TS 6 parallel für typescript-eslint installieren, wie in der Ankündigung beschrieben.",
+      "hintEn": "Typecheck and next build work, but linting fails. Stay on 5.9 or install TS 6 alongside it for typescript-eslint as described in the announcement.",
       "source": "https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0",
       "addedAt": "2026-11-14"
     }

@@ -1,3 +1,4 @@
+import { messageCode as _code, MessageError as _Error } from "@/i18n/translate";
 // Minimaler Check-Runner (0.2): pollt fällige/aktive Monitore, schreibt Check,
 // pflegt Live-Status am Monitor und öffnet/schließt Incidents.
 // HEALTH + HTTP über fetch, TCP über net-Socket. PING noch nicht implementiert.
@@ -46,7 +47,7 @@ async function probeHealth(m: Monitor): Promise<Probe> {
     try {
       payload = JSON.parse(text);
     } catch {}
-    if (res.status === 401) return { status: UNKNOWN, responseMs: ms, statusCode: 401, error: "401 — Token falsch/fehlt" };
+    if (res.status === 401) return { status: UNKNOWN, responseMs: ms, statusCode: 401, error: _code("validation.mc0a2a72d0d") };
     const word = typeof payload?.status === "string" ? (payload.status as string) : undefined;
     const status = worsenByResponseTime(mapWord(word, res.ok), ms, m.degradedAboveMs, m.downAboveMs);
     return {
@@ -75,7 +76,7 @@ async function probeHttp(m: Monitor): Promise<Probe> {
     let error: string | null = null;
     if (m.expectedStatus != null) {
       status = res.status === m.expectedStatus ? UP : DOWN;
-      if (status === DOWN) error = `HTTP ${res.status} (erwartet ${m.expectedStatus})`;
+      if (status === DOWN) error = _code("validation.httpExpected", { status: res.status, expected: m.expectedStatus });
     } else {
       status = res.ok ? UP : DOWN;
       if (status === DOWN) error = `HTTP ${res.status}`;
@@ -84,7 +85,7 @@ async function probeHttp(m: Monitor): Promise<Probe> {
       const body = await res.text();
       if (!body.includes(m.keyword)) {
         status = DOWN;
-        error = `Keyword "${m.keyword}" fehlt`;
+        error = _code("validation.me0ffbad143", { value0: m.keyword });
       }
     }
     return { status, responseMs: ms, statusCode: res.status, error };
@@ -101,7 +102,7 @@ function probeTcp(m: Monitor): Promise<Probe> {
   const t0 = Date.now();
   return new Promise((resolve) => {
     if (!host || !Number.isFinite(port)) {
-      resolve({ status: DOWN, responseMs: null, statusCode: null, error: "Ziel muss host:port sein" });
+      resolve({ status: DOWN, responseMs: null, statusCode: null, error: _code("validation.m061518b639") });
       return;
     }
     const sock = new net.Socket();
@@ -111,7 +112,7 @@ function probeTcp(m: Monitor): Promise<Probe> {
     };
     sock.setTimeout(m.timeoutMs);
     sock.once("connect", () => done({ status: UP, responseMs: Date.now() - t0, statusCode: null, error: null }));
-    sock.once("timeout", () => done({ status: DOWN, responseMs: Date.now() - t0, statusCode: null, error: "Timeout" }));
+    sock.once("timeout", () => done({ status: DOWN, responseMs: Date.now() - t0, statusCode: null, error: _code("validation.m70594d9329") }));
     sock.once("error", (e) => done({ status: DOWN, responseMs: Date.now() - t0, statusCode: null, error: String(e) }));
     sock.connect(port, host);
   });
@@ -123,7 +124,7 @@ async function probe(m: Monitor): Promise<Probe> {
     case "HTTP":
     case "KEYWORD": return probeHttp(m);
     case "TCP": return probeTcp(m);
-    default: return { status: UNKNOWN, responseMs: null, statusCode: null, error: "PING noch nicht implementiert" };
+    default: return { status: UNKNOWN, responseMs: null, statusCode: null, error: _code("validation.me3bd7b4a28") };
   }
 }
 

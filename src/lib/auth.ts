@@ -14,7 +14,7 @@ export async function sha256hex(s: string): Promise<string> {
     .join("");
 }
 
-export type CurrentUser = { id: string; email: string; name: string | null; role: Role };
+export type CurrentUser = { id: string; email: string; name: string | null; role: Role; locale?: string | null };
 
 // Liefert den eingeloggten, AKTIVEN User oder null. Deaktivierte/gelöschte User
 // zählen als abgemeldet (Cookie kann noch gültig signiert sein → DB entscheidet).
@@ -23,10 +23,10 @@ export async function currentUser(): Promise<CurrentUser | null> {
   if (!session) return null;
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, email: true, name: true, role: true, active: true },
+    select: { id: true, email: true, name: true, role: true, active: true, locale: true },
   });
   if (!user || !user.active) return null;
-  return { id: user.id, email: user.email, name: user.name, role: user.role };
+  return { id: user.id, email: user.email, name: user.name, role: user.role, locale: user.locale };
 }
 
 // Für Pages UND Server Actions: ohne Login → /login. Gibt den User zurück.

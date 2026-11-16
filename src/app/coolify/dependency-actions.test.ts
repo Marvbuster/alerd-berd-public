@@ -1,3 +1,4 @@
+import { german } from "@/test/messages";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   user: vi.fn(), job: { updateMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() }, message: { create: vi.fn() }, pkg: { findMany: vi.fn() }, registry: { findMany: vi.fn() }, advisory: { findMany: vi.fn() },
@@ -20,15 +21,15 @@ describe("cancelDependencyJob", () => {
     expect(where.status.in).not.toContain("RUNNING");
     expect(where.status.in).not.toContain("PUBLISHING");
     expect(where.OR).toEqual([{ workerLockedUntil: null }, { workerLockedUntil: { lt: expect.any(Date) } }]);
-    expect(mocks.message.create).toHaveBeenCalled();
+    expect(german(mocks.message.create)).toHaveBeenCalled();
   });
 
   it("meldet sauber, wenn der Worker gerade arbeitet", async () => {
     mocks.job.updateMany.mockResolvedValue({ count: 0 });
     const result = await cancelDependencyJob("job1");
-    expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/Worker arbeitet/);
-    expect(mocks.message.create).not.toHaveBeenCalled();
+    expect(german(result.ok)).toBe(false);
+    expect(german(result.message)).toMatch(/Worker arbeitet/);
+    expect(german(mocks.message.create)).not.toHaveBeenCalled();
   });
 });
 
@@ -52,10 +53,10 @@ describe("createDependencyJob", () => {
 
   it("legt kein zweites Update an, wenn die Version schon gepusht oder live ist", async () => {
     mocks.job.findMany.mockResolvedValue([{ status: "LIVE", targetVersion: "16.4.6" }]);
-    expect(await createDependencyJob({}, form({ start: "1" }))).toMatchObject({ ok: false, message: expect.stringMatching(/schon ausgeliefert/) });
+    expect(german(await createDependencyJob({}, form({ start: "1" })))).toMatchObject({ ok: false, message: expect.stringMatching(/schon ausgeliefert/) });
     mocks.job.findMany.mockResolvedValue([]);
     mocks.pkg.findMany.mockResolvedValue([{ name: "next", version: "16.4.6" }]);
-    expect((await createDependencyJob({}, form())).ok).toBe(false);
+    expect(german((await createDependencyJob({}, form())).ok)).toBe(false);
     expect(mocks.job.create).not.toHaveBeenCalled();
   });
 
@@ -67,7 +68,7 @@ describe("createDependencyJob", () => {
   it("blockiert frische Releases auch bei einem manipulierten Formular", async () => {
     mocks.registry.findMany.mockResolvedValue([{ name: "next", versions: { "16.4.6": new Date().toISOString() } }]);
     const result = await createDependencyJob({}, form());
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/erst am/) });
+    expect(german(result)).toMatchObject({ ok: false, message: expect.stringMatching(/erst am/) });
     expect(mocks.job.create).not.toHaveBeenCalled();
   });
 });
@@ -77,7 +78,7 @@ describe("Freigaben im Chat", () => {
     mocks.job.updateMany.mockResolvedValue({ count: 1 });
     await approveDependencyPreparation("j1");
     await approveDependencyPublish("j1");
-    expect(mocks.message.create.mock.calls.map((c) => c[0].data)).toEqual([
+    expect(german(mocks.message.create.mock.calls.map((c) => c[0].data))).toEqual([
       { jobId: "j1", role: "SYSTEM", content: "Du hast „Update vorbereiten“ freigegeben." },
       { jobId: "j1", role: "SYSTEM", content: "Du hast „Commit & Push“ freigegeben." },
     ]);
@@ -86,6 +87,6 @@ describe("Freigaben im Chat", () => {
   it("schreibt nichts, wenn die Freigabe nicht greift", async () => {
     mocks.job.updateMany.mockResolvedValue({ count: 0 });
     expect((await approveDependencyPublish("j1")).ok).toBe(false);
-    expect(mocks.message.create).not.toHaveBeenCalled();
+    expect(german(mocks.message.create)).not.toHaveBeenCalled();
   });
 });

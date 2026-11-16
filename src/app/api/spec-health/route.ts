@@ -6,6 +6,9 @@ import { credentialsConfigured } from "@/lib/credentials";
 import { listExpiries } from "@/lib/credential-expiry-watch";
 import { daysLeft, expiryPhrase, soonest } from "@/lib/credential-expiry";
 import { NODE_REGISTRY_ID } from "@/lib/version-watch-logic";
+import { translate, translateMessage, messageCode, recipientLocale } from "../../../../scripts/i18n.mjs";
+
+const healthMessage = (key: string, values = {}) => translate(recipientLocale(), `health.${key}`, values);
 
 // Alerd Berds eigene Spec-Health (v1, spec/alerd-health.schema.json):
 // Bearer-geschützt, getrennt von der Liveness /api/health, an der Coolifys
@@ -38,7 +41,7 @@ function getRuntime() {
   return (runtimeInfo = { node: process.versions.node, ...(commit && /^[0-9a-f]{7,40}$/i.test(commit) ? { commit } : {}), packages });
 }
 
-const briefErr = (e: unknown) => (e instanceof Error ? e.message : String(e)).split("\n")[0].slice(0, 200);
+const briefErr = (e: unknown) => translateMessage(recipientLocale(), e instanceof Error ? e.message : String(e)).split("\n")[0].slice(0, 200);
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, new Promise<T>((_, reject) => { setTimeout(() => reject(new Error("timeout")), ms); })]);
@@ -85,9 +88,9 @@ function checkConfig(): Component[] {
   const key = credentialsConfigured();
   return [
     push || email
-      ? { name: "alerting", status: push && email ? "ok" : "degraded", ...(push && email ? {} : { detail: push ? "nur Web Push, keine E-Mail" : "nur E-Mail, kein Web Push" }) }
-      : { name: "alerting", status: "down", detail: "weder Web Push noch E-Mail konfiguriert" },
-    key ? { name: "credential-key", status: "ok" } : { name: "credential-key", status: "down", detail: "CREDENTIAL_ENCRYPTION_KEY fehlt oder ist keine 64 Hex-Zeichen" },
+      ? { name: "alerting", status: push && email ? "ok" : "degraded", ...(push && email ? {} : { detail: healthMessage(push ? "pushOnly" : "emailOnly") }) }
+      : { name: "alerting", status: "down", detail: healthMessage("noAlerting") },
+    key ? { name: "credential-key", status: "ok" } : { name: "credential-key", status: "down", detail: healthMessage("credentialKey") },
   ];
 }
 
@@ -116,7 +119,7 @@ async function checkCoolify(now: number): Promise<{ comp: Component | null; ageS
       ? { name: "coolify-sync", status: "degraded", detail: `${failing.map((r) => r.label).join(", ")}: ${briefErr(failing[0].lastError)}` }
       : { name: "coolify-sync", status: "ok" };
     return { comp, ageSec: Number.isFinite(ageSec) && ageSec < Number.MAX_SAFE_INTEGER ? ageSec : null };
-  } catch { return { comp: { name: "coolify-sync", status: "degraded", detail: "nicht lesbar" }, ageSec: null }; }
+  } catch { return { comp: { name: "coolify-sync", status: "degraded", detail: healthMessage("unreadable") }, ageSec: null }; }
 }
 
 // Versionswächter: npm- und Node-Referenzdaten werden täglich aufgefrischt,
@@ -132,11 +135,11 @@ async function checkVersionWatch(now: number): Promise<{ comps: Component[]; ref
     return {
       refAgeH,
       comps: [
-        registryErrors ? { name: "version-watch", status: "degraded", detail: `${registryErrors} Pakete ohne frische npm- oder Advisory-Daten` } : { name: "version-watch", status: "ok" },
-        scanErrors.length ? { name: "repository-scans", status: "degraded", detail: `scheitert: ${scanErrors.map((w) => w.repository).join(", ").slice(0, 180)}` } : { name: "repository-scans", status: "ok" },
+        registryErrors ? { name: "version-watch", status: "degraded", detail: healthMessage("stalePackages", { count: registryErrors }) } : { name: "version-watch", status: "ok" },
+        scanErrors.length ? { name: "repository-scans", status: "degraded", detail: healthMessage("scanFailed", { repositories: scanErrors.map((w) => w.repository).join(", ").slice(0, 180) }) } : { name: "repository-scans", status: "ok" },
       ],
     };
-  } catch { return { comps: [{ name: "version-watch", status: "degraded", detail: "nicht lesbar" }], refAgeH: null }; }
+  } catch { return { comps: [{ name: "version-watch", status: "degraded", detail: healthMessage("unreadable") }], refAgeH: null }; }
 }
 
 // Fehlgeschlagene Alarme und AlerdReperd-Mails des letzten Tages.
@@ -157,9 +160,10 @@ async function checkCredentials(now: number): Promise<{ comp: Component; daysLef
     const next = soonest(await withTimeout(listExpiries(), DB_TIMEOUT_MS));
     if (!next) return { comp: { name: "credentials", status: "ok" }, daysLeft: null };
     const days = daysLeft(next.expiresAt, now);
-    const detail = `${next.label} ${expiryPhrase(days)}`;
+    const locale = recipientLocale();
+    const detail = `${translate(locale, `mail.credential_${next.kind}`)} ${expiryPhrase(days, locale)}`;
     return { comp: days <= 0 ? { name: "credentials", status: "down", detail } : days <= 30 ? { name: "credentials", status: "degraded", detail } : { name: "credentials", status: "ok" }, daysLeft: days };
-  } catch { return { comp: { name: "credentials", status: "degraded", detail: "nicht lesbar" }, daysLeft: null }; }
+  } catch { return { comp: { name: "credentials", status: "degraded", detail: healthMessage("unreadable") }, daysLeft: null }; }
 }
 
 function metricStatus(m: Metric): CompStatus {
@@ -170,7 +174,7 @@ function metricStatus(m: Metric): CompStatus {
 
 export async function GET(req: Request) {
   const token = process.env.SPEC_HEALTH_TOKEN;
-  if (!token) return NextResponse.json({ error: "SPEC_HEALTH_TOKEN fehlt" }, { status: 503 });
+  if (!token) return NextResponse.json({ error: messageCode("health.missingToken") }, { status: 503 });
   if (!tokenOk(req.headers.get("authorization"), token)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const now = Date.now();

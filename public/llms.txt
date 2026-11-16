@@ -1,59 +1,53 @@
 # Alerd Berd
 
-> Alerd Berd überwacht Web-Dienste und alarmiert per E-Mail und Web-Push, wenn
-> einer ausfällt. Dienste melden ihren Zustand über einen kleinen, versionierten
-> Health-Contract (JSON), den Alerd pollt und in eine Ampel (grün/orange/rot)
-> übersetzt.
+> Alerd Berd monitors web services and sends email and Web Push alerts when they
+> fail. Services expose a small, versioned JSON health contract that Alerd polls
+> to derive a green, amber or red status.
 
-Damit Alerd einen Dienst überwachen kann, stellt der Dienst eine Health-Route
-bereit, die diesem Contract folgt. Pflicht ist nur `status`; optional kommen
-Komponenten (DB, Cache, externe APIs) und Messwerte mit Schwellen dazu. Minimal
-reicht `{"status":"ok"}`. Diese Datei richtet sich an Menschen und an
-Coding-Agents, die so eine Route bauen sollen.
+Only `status` is required. Components and threshold-based metrics are optional.
+The minimal response is `{"status":"ok"}`. These instructions are for operators
+and coding agents implementing a health route.
 
-## Zugang zu den Guides
+## Access
 
-Diese Datei ist offen, die Guides selbst sind token-geschützt. Du brauchst einen
-Zugangs-Token vom Alerd-Betreiber und sendest ihn als Bearer:
+This file is public; the guides require a personal API key, session or instance
+spec token. Obtain a token from your Alerd operator and send it as a bearer:
 
-```
-curl -H "Authorization: Bearer <DEIN_TOKEN>" https://alerd.example.com/spec/alerd-health.schema.json
+```sh
+curl -H "Authorization: Bearer <YOUR_TOKEN>" https://alerd.example.com/spec/alerd-health.schema.json
 ```
 
-Ohne gültigen Token antworten die Guide-URLs mit 401.
+Without valid authentication, guide URLs return 401.
 
-## Health-Contract
+## Health contract
 
-- [JSON Schema v1](https://alerd.example.com/spec/alerd-health.schema.json): die verbindliche Definition der Health-Antwort (Felder, Typen, Enums)
-- [Beispiel-Antwort](https://alerd.example.com/spec/example-health.json): eine vollständige Payload mit components und metrics
-- [Implementierungs-Guide](https://alerd.example.com/spec/implementing-health.md): Schritt für Schritt eine `/health`-Route bauen, mit Copy-paste-Beispielen für Next.js und Express, inklusive `runtime` mit Commit und der Coolify-Einstellung dafür
+- [JSON Schema v1](https://alerd.example.com/spec/alerd-health.schema.json): authoritative fields, types and enums
+- [Complete example](https://alerd.example.com/spec/example-health.json): components, metrics and runtime information
+- [Implementation guide, English](https://alerd.example.com/spec/implementing-health.en.md): Next.js and Express examples, runtime commit reporting and the required Coolify setting
+- [Implementierungs-Guide, Deutsch](https://alerd.example.com/spec/implementing-health.md): dieselbe Anleitung auf Deutsch
 
-## Regeln in Kürze
+## Rules
 
-- Pflichtfeld ist nur `status`: `"ok"` | `"degraded"` | `"down"`.
-- `components[]` (`name`, `status`, optional `detail`): eine `down`-Komponente färbt rot, `degraded` orange.
-- `metrics[]` (`name`, `value`, optional `unit`/`warn`/`crit`/`direction`): Wert ≥ `warn` → orange, ≥ `crit` → rot. `direction: "below"` für Werte, bei denen niedrig schlecht ist.
-- Die Route darf Bearer-geschützt sein; Alerd sendet den hinterlegten Token als `Authorization: Bearer <token>`.
-- Der HTTP-Status entscheidet nur, OB eine Antwort da ist; die Farbe kommt aus `status` + components + metrics. Keine Antwort (Timeout/DNS) ist automatisch rot.
-- Das ist NICHT die flache, öffentliche Liveness `/api/health`, sondern eine zusätzliche, tiefere Route (Konvention `/health`) neben ihr.
-- Empfohlen: `runtime` mit dem Live-Stand des Prozesses: `node` (`process.versions.node`), `commit` (Git-Commit des laufenden Builds, auf Coolify `SOURCE_COMMIT`, siehe Guide) und `packages` (exakte Versionen aus `node_modules`, z. B. `next`). Damit erkennt Alerd veraltete oder verwundbare Pakete und bestätigt Updates exakt. Nur in der geschützten Route, nie in der Liveness.
+- Required: `status` is `"ok"`, `"degraded"` or `"down"`.
+- `components[]`: `name`, `status`, optional `detail`. A down component makes the monitor red; degraded makes it amber.
+- `metrics[]`: `name`, `value`, optional `unit`, `warn`, `crit`, `direction`. Value ≥ warn is amber; value ≥ crit is red. Use `direction: "below"` where low values are bad.
+- The route may require a bearer token. Alerd sends the token stored on its monitor as `Authorization: Bearer <token>`.
+- A parsed response derives its colour from status, components and metrics, rather than the HTTP status. No response, timeout or DNS failure is automatically red.
+- This is an additional deep route (conventionally `/health`), separate from public, shallow liveness such as `/api/health`. Leave existing container liveness unchanged.
+- Recommended: include `runtime.node` from `process.versions.node`, `runtime.commit` for the running build and exact `runtime.packages` versions from `node_modules`. This supports advisory checks and exact update confirmation. Report this information only in the protected spec route.
 
-## Pflicht für Coding-Agents: Hinweis an den Menschen
+## Required handoff from coding agents
 
-Wenn du `runtime.commit` einbaust und die App auf Coolify läuft, kannst du einen
-Schritt nicht selbst erledigen. Sag dem Menschen am Ende deiner Arbeit
-ausdrücklich und als eigenen Punkt:
+If the app runs on Coolify and you implement `runtime.commit`, explicitly tell the
+operator to perform this manual step:
 
-> In Coolify bei dieser App einschalten: **Advanced → Build → Source commit
-> availability → Available during build**. Erst danach neu deployen. Ohne diese
-> Einstellung bleibt `SOURCE_COMMIT` leer und die App meldet keinen Commit.
+> In the app's Coolify settings, enable **Advanced → Build → Source commit
+> availability → Available during build**, then redeploy. Otherwise SOURCE_COMMIT
+> remains empty and the app cannot report its build commit.
 
-Prüfen lässt es sich nach dem Deploy: Die Spec-Health-Antwort enthält dann
-`runtime.commit` mit dem Commit des Deploys. Fehlt das Feld, ist die Einstellung
-noch aus oder das Dockerfile reicht `SOURCE_COMMIT` nicht als `ARG`/`ENV` durch.
+After deployment, verify that the spec-health response contains the deployed
+`runtime.commit`. If it is absent, check both the Coolify setting and the
+Dockerfile's ARG-to-ENV forwarding.
 
-## Anbinden
-
-Dem Alerd-Betreiber genügen die volle Health-URL und, falls geschützt, der
-Bearer-Token. Intervall, Schwellen-Fallbacks und die Alarm-Kanäle stellt Alerd
-selbst ein.
+The operator needs the full health URL and its bearer token, if protected.
+Alerd configures the polling interval, fallback thresholds and alert channels.

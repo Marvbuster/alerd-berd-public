@@ -22,14 +22,14 @@ RUN npm run build
 # --- Laufzeit-Abhängigkeiten außerhalb von Next ---
 # Next selbst kommt getract und schlank aus .next/standalone. Zusätzlich brauchen der
 # Worker (@prisma/client, web-push, semver, bcryptjs, auch seed-admin) und migrate deploy
-# (prisma-CLI samt @prisma/config → effect …) ihre Pakete. Nur diese fünf, in der Version
+# (prisma-CLI samt @prisma/config → effect …) ihre Pakete. Gezielt in der Version
 # aus dem Lockfile. Früher kam das komplette node_modules des Builders samt devDeps ins
 # Image, bei zwei Coolify-Ressourcen (Board, Worker) doppelt.
 FROM node:24-alpine AS runtime-deps
 WORKDIR /app
 COPY package-lock.json ./
 RUN node -e "const l = require('./package-lock.json').packages; \
-const pick = ['prisma', '@prisma/client', 'web-push', 'semver', 'bcryptjs']; \
+const pick = ['prisma', '@prisma/client', 'web-push', 'semver', 'bcryptjs', 'intl-messageformat']; \
 const dependencies = Object.fromEntries(pick.map((n) => [n, l['node_modules/' + n].version])); \
 require('fs').writeFileSync('package.json', JSON.stringify({ name: 'alerd-runtime', private: true, dependencies }));" \
  && npm install --omit=dev --no-package-lock --no-audit --no-fund && npm cache clean --force
@@ -55,7 +55,8 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/spec ./spec
 # Seed-Skript (Admin-Anlage + Owner-Backfill), vom Entrypoint nach migrate deploy.
 COPY --from=builder /app/scripts ./scripts
-# Die fünf Laufzeit-Pakete ins standalone-node_modules legen, dazu der im Builder
+COPY --from=builder /app/messages ./messages
+# Die Laufzeit-Pakete ins standalone-node_modules legen, dazu der im Builder
 # generierte Prisma-Client. Ein Cherry-Pick von prisma/@prisma aus dem Builder reichte
 # nicht, die CLI braucht ihre transitiven Deps.
 COPY --from=runtime-deps /app/node_modules ./node_modules

@@ -1,3 +1,4 @@
+import { german } from "@/test/messages";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -32,13 +33,13 @@ describe("Coolify actions ownership", () => {
   });
   it("distinguishes missing fields and invalid tokens without echoing credentials", async () => {
     const form = new FormData();
-    expect((await saveConnection({}, form)).message).toContain("Verbindungsname");
+    expect(german((await saveConnection({}, form)).message)).toContain("Verbindungsname");
     form.set("label", "Example");
-    expect((await saveConnection({}, form)).message).toContain("Token wurde nicht übermittelt");
+    expect(german((await saveConnection({}, form)).message)).toContain("Token wurde nicht übermittelt");
     form.set("token", "Bearer synthetic-secret");
     const result = await saveConnection({}, form);
-    expect(result.message).toContain("Leerzeichen");
-    expect(result.message).not.toContain("synthetic-secret");
+    expect(german(result.message)).toContain("Leerzeichen");
+    expect(german(result.message)).not.toContain("synthetic-secret");
     expect(mocks.fetchApps).not.toHaveBeenCalled();
   });
   it("requires login for all mutations", async () => {

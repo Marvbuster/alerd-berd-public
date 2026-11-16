@@ -1,11 +1,15 @@
 import type { MetadataRoute } from "next";
+import { getLocale } from "next-intl/server";
+import { translate } from "@/i18n/translate";
 
 // PWA-Manifest → Home-Screen-Install (Voraussetzung für Web Push auf iOS/Android).
-export default function manifest(): MetadataRoute.Manifest {
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const locale = await getLocale();
   return {
     name: "Alerd Berd",
     short_name: "Alerd",
-    description: "Überwacht Dienste (Health-Checks) und warnt per E-Mail und Push.",
+    description: translate(locale, "metadata.manifest"),
+    lang: locale,
     start_url: "/",
     scope: "/",
     display: "standalone",

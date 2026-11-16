@@ -1,5 +1,8 @@
 "use client";
 
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
+
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
@@ -24,16 +27,16 @@ function sizeFor(status: string): number {
   }
 }
 
-function fmtDur(ms: number | null): string {
+function fmtDur(ms: number | null, _locale: string = "de"): string {
   if (ms == null) return "—";
   const s = Math.max(0, ms / 1000);
   if (s < 60) return `${Math.floor(s)}s`;
   const m = s / 60;
   if (m < 60) return `${Math.floor(m)}m`;
   const h = m / 60;
-  if (h < 24) return `${Math.floor(h)}h ${Math.floor(m % 60)}m`;
+  if (h < 24) return _t(_locale, "sphere_ServiceCard.m8f29caf41b", { value0: Math.floor(h), value1: Math.floor(m % 60) });
   const d = h / 24;
-  return `${Math.floor(d)}d ${Math.floor(h % 24)}h`;
+  return _t(_locale, "sphere_ServiceCard.m4e62faea22", { value0: Math.floor(d), value1: Math.floor(h % 24) });
 }
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
@@ -76,6 +79,7 @@ interface Props {
 }
 
 export function ServiceCard({ node, dir, radius, anySelected, selected, onSelect, origins, index }: Props) {
+  const _locale = _useLocale();
   const groupRef = useRef<THREE.Group>(null);
   const faceMat = useRef<THREE.MeshBasicMaterial>(null);
   const glowMat = useRef<THREE.MeshBasicMaterial>(null);
@@ -204,10 +208,10 @@ export function ServiceCard({ node, dir, radius, anySelected, selected, onSelect
     // Läuft der Dienst und meldet seine Laufzeit, zählt die seit dem letzten
     // Start oder Deploy. Sonst: seit wann der Status unverändert ist.
     const uptime = liveUptimeMs(node);
-    ctx.fillText(uptime != null ? "L A U F Z E I T" : "S E I T", 34, 116);
+    ctx.fillText(uptime != null ? _t(_locale, "sphere_ServiceCard.m9c7dee75f5") : _t(_locale, "sphere_ServiceCard.m123cef7958"), 34, 116);
     ctx.font = "bold 56px system-ui, sans-serif";
     ctx.fillStyle = color;
-    ctx.fillText(fmtDur(uptime ?? (node.stateSinceMs != null ? Date.now() - node.stateSinceMs : null)), 32, 172);
+    ctx.fillText(fmtDur(uptime ?? (node.stateSinceMs != null ? Date.now() - node.stateSinceMs : null), _locale), 32, 172);
 
     // Divider
     ctx.strokeStyle = "rgba(177,195,217,0.14)";
@@ -221,22 +225,22 @@ export function ServiceCard({ node, dir, radius, anySelected, selected, onSelect
     const col2 = TW / 2 + 10;
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillStyle = "rgba(177,195,217,0.65)";
-    ctx.fillText("ANTWORTZEIT", 34, 228);
-    ctx.fillText("INTERVALL", col2, 228);
+    ctx.fillText(_t(_locale, "sphere_ServiceCard.m7ec0975172"), 34, 228);
+    ctx.fillText(_t(_locale, "sphere_ServiceCard.m60c7602e02"), col2, 228);
     ctx.font = "22px system-ui, sans-serif";
     ctx.fillStyle = "#d3e0f0";
-    ctx.fillText(node.responseMs != null ? `${node.responseMs} ms` : "—", 34, 256);
-    ctx.fillText(`${node.intervalSec} s`, col2, 256);
+    ctx.fillText(node.responseMs != null ? _t(_locale, "sphere_ServiceCard.m33f3d582fe", { value0: node.responseMs }) : "—", 34, 256);
+    ctx.fillText(_t(_locale, "sphere_ServiceCard.md05609f424", { value0: node.intervalSec }), col2, 256);
 
     // Letzter grüner Check — nur wenn nicht UP
     if (node.status !== "UP") {
       ctx.font = "11px system-ui, sans-serif";
       ctx.fillStyle = "rgba(177,195,217,0.65)";
-      ctx.fillText("LETZTER OK", 34, 290);
+      ctx.fillText(_t(_locale, "sphere_ServiceCard.m350b706dad"), 34, 290);
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = color;
-      const lo = node.lastUpMs != null ? `vor ${fmtDur(Date.now() - node.lastUpMs)}` : "—";
-      ctx.fillText(lo, 34 + ctx.measureText("LETZTER OK ").width + 6, 291);
+      const lo = node.lastUpMs != null ? _t(_locale, "sphere_ServiceCard.ma4c2973d4a", { value0: fmtDur(Date.now() - node.lastUpMs, _locale) }) : "—";
+      ctx.fillText(lo, 34 + ctx.measureText(_t(_locale, "sphere_ServiceCard.m3e395072d9")).width + 6, 291);
     }
 
     face.tex.needsUpdate = true;

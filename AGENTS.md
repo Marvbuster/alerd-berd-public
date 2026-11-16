@@ -1,7 +1,11 @@
 # Alerd Berd
 
 Next.js App Router, React, Prisma 6, PostgreSQL, Tailwind and Vitest.
-The UI is currently German-only. Keep interface copy concise and in German.
+The UI supports German and English without URL prefixes. German is the master
+catalog in messages/de.json; maintain parity with messages/en.json. Preserve
+German wording and write concise, natural English. Use the active request locale
+for the UI and the recipient's User.locale for background messages. Read the
+shared scripts/i18n.mjs formatter before changing worker or mail messages.
 
 Use `npx tsc --noEmit`, `npx vitest run` and `node --check scripts/dependency-worker.mjs`.
 Verify container changes with `docker build .`. Database changes require Prisma

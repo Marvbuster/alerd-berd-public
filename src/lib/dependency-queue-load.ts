@@ -7,7 +7,7 @@ import type { DependencyJobStatus } from "@prisma/client";
 // Alle offenen Jobs aller aktiven Nutzer (der Worker ist geteilt), dazu die
 // eigenen abgeschlossenen der letzten 24 Stunden. Welche Felder fremder Jobs
 // sichtbar sind, entscheidet buildQueue.
-export async function loadQueue(viewerId: string, now = new Date()): Promise<Queue> {
+export async function loadQueue(viewerId: string, now = new Date(), locale = "de"): Promise<Queue> {
   const [jobs, lastSeen] = await Promise.all([
     prisma.dependencyJob.findMany({
       where: {
@@ -30,5 +30,5 @@ export async function loadQueue(viewerId: string, now = new Date()): Promise<Que
   return buildQueue(jobs.map((j) => ({
     ...j, applicationName: j.application.name, ownerName: j.owner.name || j.owner.email.split("@")[0],
     messages: [...j.messages].reverse(),
-  })), viewerId, now, lastSeen);
+  })), viewerId, now, lastSeen, locale);
 }

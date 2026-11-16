@@ -1,3 +1,4 @@
+import { translate as _t, recipientLocale } from "../../scripts/i18n.mjs";
 // Warnt vor ablaufenden Zugängen (GitHub-Tokens, Claude-Code-Token), bevor die
 // Versionsüberwachung oder der Update-Worker still scheitert. Läuft mit dem
 // Check-Runner, ist aber billig: drei kleine Tabellen, GitHub nur einmal pro Token.
@@ -7,6 +8,7 @@ import { fetchGitHubTokenExpiry } from "./github-client";
 import { sendToChannel } from "./alert";
 import { claudeExpiry, daysLeft, dueWarning, expiryPhrase } from "./credential-expiry";
 import { publicUrl } from "@/lib/public-url";
+import { intlLocale } from "@/i18n/locale";
 
 export type CredentialKind = "github" | "github-publish" | "claude";
 export const CREDENTIAL_LABEL: Record<CredentialKind, string> = {
@@ -84,18 +86,21 @@ async function markWarned(e: Expiry, step: number) {
 // Schickt je Zugang und Warnstufe (30, 7, 1 Tag, abgelaufen) genau eine Meldung
 // an alle aktiven Kanäle des Owners. Scheitern alle Kanäle, kommt sie beim
 // nächsten Lauf erneut.
-export async function warnExpiringCredentials(ownerId?: string, now = Date.now()) {
+export async function warnExpiringCredentials(ownerId?: string, now = Date.now(), _locale: string = "de") {
   await backfillGitHub(ownerId);
   for (const e of await listExpiries(ownerId)) {
+    const owner = await prisma.user.findUnique({ where: { id: e.ownerId }, select: { locale: true } });
+    const _locale = recipientLocale(owner?.locale);
+    const label = _t(_locale, `mail.credential_${e.kind}`);
     const days = daysLeft(e.expiresAt, now);
     const step = dueWarning(days, e.warnedDays);
     if (step == null) continue;
     const channels = await prisma.alertChannel.findMany({ where: { ownerId: e.ownerId, enabled: true } });
-    const date = e.expiresAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
-    const phrase = expiryPhrase(days);
-    const subject = `${days < 0 ? "🔴" : "🟠"} ${e.label} ${phrase}`;
-    const renew = e.kind === "claude" ? "Mit claude setup-token einen neuen erzeugen" : "Bei GitHub neu erzeugen oder verlängern";
-    const text = `Alerd Berd: Dein ${e.label} ${phrase} (${date}). ${renew} und unter Einstellungen → Zugänge eintragen: ${PUBLIC_URL}/settings/access`;
+    const date = e.expiresAt.toLocaleDateString(intlLocale(_locale), { timeZone: "Europe/Berlin" });
+    const phrase = expiryPhrase(days, _locale);
+    const subject = `${days < 0 ? "🔴" : "🟠"} ${label} ${phrase}`;
+    const renew = e.kind === "claude" ? _t(_locale, "mail.me3f990af10") : _t(_locale, "mail.mea25b3990d");
+    const text = _t(_locale, "mail.mceaa7d8890", { value0: label, value1: phrase, value2: date, value3: renew, value4: PUBLIC_URL });
     const results = await Promise.all(channels.map((ch) => sendToChannel(ch, subject, text, days < 0 ? "DOWN" : "DEGRADED")));
     if (!channels.length || results.some((r) => r.success)) await markWarned(e, step);
   }

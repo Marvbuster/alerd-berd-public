@@ -1,5 +1,7 @@
 "use server";
 
+import { messageCode as _code } from "@/i18n/translate";
+
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -27,10 +29,10 @@ export async function createInvite(_prev: InviteState, fd: FormData): Promise<In
   const admin = await requireAdmin();
   const email = String(fd.get("email") ?? "").trim().toLowerCase();
   const role = (String(fd.get("role") ?? "USER") === "ADMIN" ? "ADMIN" : "USER") as Role;
-  if (!email || !email.includes("@")) return { error: "Gültige E-Mail angeben." };
+  if (!email || !email.includes("@")) return { error: _code("actions.m0f09ea378a") };
 
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-  if (existing) return { error: "Für diese E-Mail gibt es schon ein Konto." };
+  if (existing) return { error: _code("actions.m5fb22458d7") };
 
   const code = genInviteCode();
   await prisma.invite.create({
@@ -50,13 +52,13 @@ export async function revokeInvite(id: string) {
   await requireAdmin();
   // Nur offene (noch nicht eingelöste) Invites löschen.
   const res = await prisma.invite.deleteMany({ where: { id, usedAt: null } });
-  if (res.count === 0) throw new Error("Einladung nicht gefunden oder schon eingelöst.");
+  if (res.count === 0) throw new Error(_code("actions.me13aec7608"));
   revalidatePath("/settings/users");
 }
 
 export async function setUserActive(id: string, active: boolean) {
   const admin = await requireAdmin();
-  if (id === admin.id) throw new Error("Eigenes Konto kann nicht deaktiviert werden.");
+  if (id === admin.id) throw new Error(_code("actions.mcd68ce049c"));
   await prisma.user.update({ where: { id }, data: { active } });
   revalidatePath("/settings/users");
 }
@@ -68,7 +70,7 @@ export async function createPasswordReset(_prev: ResetState, fd: FormData): Prom
   const admin = await requireAdmin();
   const userId = String(fd.get("userId") ?? "");
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-  if (!user) return { error: "Konto nicht gefunden." };
+  if (!user) return { error: _code("actions.m5763712cbc") };
 
   const code = genInviteCode();
   await prisma.$transaction([

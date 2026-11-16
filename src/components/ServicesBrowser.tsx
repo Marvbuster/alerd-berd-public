@@ -1,5 +1,8 @@
 "use client";
 
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
+
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "./Icon";
@@ -10,7 +13,7 @@ import { ServicePicker } from "./ServicePicker";
 import { CHAT_SUFFIX } from "./DependencyAssistant";
 import { liveUptimeMs, type VizNode, type WatchLevel } from "@/lib/viz";
 import type { PoolApp } from "@/lib/services";
-import { aggregateStatus, CHECK_KIND_LABEL, checkTally, matchesFilter, matchesQuery, SERVICE_GROUPS, serviceGroup, STATUS_META, STATUS_ORDER, type ServiceFilter } from "@/lib/service-logic";
+import { aggregateStatus, localizedCHECK_KIND_LABEL as CHECK_KIND_LABEL, checkTally, matchesFilter, matchesQuery, localizedSERVICE_GROUPS as SERVICE_GROUPS, serviceGroup, localizedSTATUS_META as STATUS_META, STATUS_ORDER, type ServiceFilter } from "@/lib/service-logic";
 
 export type ServiceItem = {
   id: string; name: string; domain: string | null; checkIds: string[]; applicationId: string; missing: boolean; meta: string;
@@ -22,13 +25,13 @@ export type ServiceItem = {
   detail: ReactNode;
 };
 
-const FILTERS: { id: ServiceFilter; label: string }[] = [
-  { id: "all", label: "Alle" },
-  { id: "attention", label: "Gestört" },
-  { id: "updates", label: "Updates" },
-  { id: "unmonitored", label: "Nicht überwacht" },
-];
-const isFilter = (value: string | null): value is ServiceFilter => FILTERS.some((f) => f.id === value);
+function FILTERS(_locale: string = "de"): { id: ServiceFilter; label: string }[] { return ([
+  { id: "all", label: _t(_locale, "ServicesBrowser.m3801a35c51") },
+  { id: "attention", label: _t(_locale, "ServicesBrowser.me05ab9f529") },
+  { id: "updates", label: _t(_locale, "ServicesBrowser.m22e2bada8f") },
+  { id: "unmonitored", label: _t(_locale, "ServicesBrowser.m3d28c2e598") },
+]); }
+const isFilter = (value: string | null, _locale: string = "de"): value is ServiceFilter => FILTERS(_locale).some((f) => f.id === value);
 
 const subscribeMobile = (callback: () => void) => {
   const query = window.matchMedia("(max-width: 800px)");
@@ -39,30 +42,32 @@ const subscribeMobile = (callback: () => void) => {
 type SortKey = "name" | "status" | "update";
 const updateRank = (s: { jobActive: boolean; watchLevel: WatchLevel | null; updateTarget: string | null }) =>
   s.jobActive ? 0 : s.watchLevel === "red" || s.watchLevel === "orange" ? 1 : s.updateTarget ? 2 : 3;
-function compareBy(key: SortKey, a: ServiceItem & { status: keyof typeof STATUS_ORDER }, b: ServiceItem & { status: keyof typeof STATUS_ORDER }) {
-  if (key === "name") return a.name.localeCompare(b.name, "de");
+function compareBy(key: SortKey, a: ServiceItem & { status: keyof typeof STATUS_ORDER }, b: ServiceItem & { status: keyof typeof STATUS_ORDER }, locale: string) {
+  if (key === "name") return a.name.localeCompare(b.name, locale);
   if (key === "status") return STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
   return updateRank(a) - updateRank(b);
 }
 
 function UpdateChip({ item }: { item: ServiceItem }) {
+  const _locale = _useLocale();
   // Gleiche Sprache wie Glocke und Update-Chat: wer ist gerade dran?
-  if (item.jobActive && item.jobActor === "user") return <span className="service-chip service-chip--update">Du bist dran</span>;
-  if (item.jobActive && item.jobActor === "stalled") return <span className="service-chip service-chip--danger">Worker hängt</span>;
-  if (item.jobActive) return <span className="service-chip service-chip--busy">Update läuft</span>;
-  if (item.alertLevel === "red" || item.alertLevel === "orange") return <span className="service-chip service-chip--danger">Sicherheit</span>;
+  if (item.jobActive && item.jobActor === "user") return <span className="service-chip service-chip--update">{_t(_locale, "ServicesBrowser.md3b54f17ff")}</span>;
+  if (item.jobActive && item.jobActor === "stalled") return <span className="service-chip service-chip--danger">{_t(_locale, "ServicesBrowser.mf3e40a52e0")}</span>;
+  if (item.jobActive) return <span className="service-chip service-chip--busy">{_t(_locale, "ServicesBrowser.m2443ef5976")}</span>;
+  if (item.alertLevel === "red" || item.alertLevel === "orange") return <span className="service-chip service-chip--danger">{_t(_locale, "ServicesBrowser.m4474c75260")}</span>;
   if (item.updateLabel) return <span className="service-chip service-chip--update">↑ {item.updateLabel}</span>;
   return <span className="text-[var(--fg-dim)]">—</span>;
 }
 
-const duration = (ms: number) => {
+const duration = (ms: number, _locale: string = "de") => {
   const m = Math.floor(ms / 60_000), h = Math.floor(m / 60), d = Math.floor(h / 24);
-  return d ? `${d} T ${h % 24} h` : h ? `${h} h ${m % 60} min` : `${Math.max(1, m)} min`;
+  return d ? _t(_locale, "ServicesBrowser.mabfadad08a", { value0: d, value1: h % 24 }) : h ? _t(_locale, "ServicesBrowser.m2e98a98d9f", { value0: h, value1: m % 60 }) : _t(_locale, "ServicesBrowser.m570ce99302", { value0: Math.max(1, m) });
 };
 
 // Laufzeit seit dem letzten Start oder Deploy (vom Dienst gemeldet) und wie
 // lange der Status schon so ist. Zählt live mit.
 function ServiceTimes({ monitors }: { monitors: VizNode[] }) {
+  const _locale = _useLocale();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const active = monitors.filter((m) => m.enabled);
@@ -71,22 +76,23 @@ function ServiceTimes({ monitors }: { monitors: VizNode[] }) {
   if (!uptimes.length && !since.length) return null;
   const status = aggregateStatus(active);
   return <p className="service-times">
-    {uptimes.length > 0 && <span>Laufzeit <b>{duration(Math.min(...uptimes))}</b></span>}
-    {since.length > 0 && <span>{status === "UP" ? "Online" : STATUS_META[status].label} seit <b>{duration(now - Math.max(...since))}</b></span>}
+    {uptimes.length > 0 && <span>{_t(_locale, "ServicesBrowser.mfc5403a45f")}<b>{duration(Math.min(...uptimes), _locale)}</b></span>}
+    {since.length > 0 && <span>{status === "UP" ? "Online" : STATUS_META(_locale)[status].label} {_t(_locale, "ServicesBrowser.mfdc3dcf756")}<b>{duration(now - Math.max(...since), _locale)}</b></span>}
   </p>;
 }
 
 // Monitore ohne Coolify-App: schlicht unter der Liste, eine Zeile je Monitor,
 // Klick führt auf die Monitor-Seite. Kein Panel, keine Version, kein Update.
 function OtherMonitors({ monitors, always = false }: { monitors: VizNode[]; always?: boolean }) {
+  const _locale = _useLocale();
   if (!monitors.length && !always) return null;
-  return <section className="service-others" aria-label="Weitere Monitore">
-    <div className="inventory-group flex items-center justify-between gap-3"><span>WEITERE MONITORE · {monitors.length}</span><Link href="/monitors/new" className="service-link">+ Monitor ohne Coolify</Link></div>
+  return <section className="service-others" aria-label={_t(_locale, "ServicesBrowser.md17feaf2b6")}>
+    <div className="inventory-group flex items-center justify-between gap-3"><span>{_t(_locale, "ServicesBrowser.m249ac04af0")}{monitors.length}</span><Link href="/monitors/new" className="service-link">{_t(_locale, "ServicesBrowser.md02f982634")}</Link></div>
     {monitors.map((m) => {
-      const meta = m.enabled ? STATUS_META[m.status] : STATUS_META.PAUSED;
+      const meta = m.enabled ? STATUS_META(_locale)[m.status] : STATUS_META(_locale).PAUSED;
       const tally = checkTally([m]);
       return <Link key={m.id} href={`/monitors/${m.id}`} className="service-row service-row--other">
-        <span className="inventory-row-name"><span className="inventory-app-icon"><Icon name="monitor" size={18} /></span><span className="min-w-0"><span className="inventory-row-title">{m.label}</span><span className="inventory-row-domain">{CHECK_KIND_LABEL[m.kind] ?? m.kind} · {m.target.replace(/^https?:\/\//, "")}</span></span></span>
+        <span className="inventory-row-name"><span className="inventory-app-icon"><Icon name="monitor" size={18} /></span><span className="min-w-0"><span className="inventory-row-title">{m.label}</span><span className="inventory-row-domain">{CHECK_KIND_LABEL(_locale)[m.kind] ?? m.kind} · {m.target.replace(/^https?:\/\//, "")}</span></span></span>
         <span className="inventory-row-status"><span className={`led led--${meta.cls}`} />{meta.label}{tally && m.enabled && <span className={`service-tally service-tally--${tally.level}`}>{tally.ok}/{tally.total}</span>}</span>
         <span className="text-[var(--fg-dim)]">↗</span>
       </Link>;
@@ -97,9 +103,10 @@ function OtherMonitors({ monitors, always = false }: { monitors: VizNode[]; alwa
 export function ServicesBrowser({ items, pool, otherIds, connections, nodes: initialNodes, initialFilter, initialQuery }: {
   items: ServiceItem[]; pool: PoolApp[]; otherIds: string[]; connections: { id: string; label: string }[]; nodes: VizNode[]; initialFilter: string; initialQuery: string;
 }) {
+  const _locale = _useLocale();
   const nodes = useLiveNodes(initialNodes);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-  const [filter, setFilter] = useState<ServiceFilter>(isFilter(initialFilter) ? initialFilter : "all");
+  const [filter, setFilter] = useState<ServiceFilter>(isFilter(initialFilter, _locale) ? initialFilter : "all");
   const [query, setQuery] = useState(initialQuery);
   const [selectedId, setSelectedId] = useState("");
   // Auf dem Handy klappt ein Dienst nur nach Antippen oder per Link auf, nie von selbst.
@@ -121,10 +128,10 @@ export function ServicesBrowser({ items, pool, otherIds, connections, nodes: ini
   }), [items, byId]);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "status", dir: 1 });
   // Nicht mehr in Coolify gefundene Apps stehen immer am Ende.
-  const sorted = useMemo(() => [...services].sort((a, b) => Number(a.missing) - Number(b.missing) || sort.dir * compareBy(sort.key, a, b) || a.name.localeCompare(b.name, "de")), [services, sort]);
-  const counts = Object.fromEntries(FILTERS.map((f) => [f.id, services.filter((s) => matchesFilter(s, f.id)).length])) as Record<ServiceFilter, number>;
+  const sorted = useMemo(() => [...services].sort((a, b) => Number(a.missing) - Number(b.missing) || sort.dir * compareBy(sort.key, a, b, _locale) || a.name.localeCompare(b.name, _locale)), [services, sort, _locale]);
+  const counts = Object.fromEntries(FILTERS(_locale).map((f) => [f.id, services.filter((s) => matchesFilter(s, f.id)).length])) as Record<ServiceFilter, number>;
   // Sortierung gilt innerhalb der Gruppen, die Gruppen selbst stehen fest.
-  const visible = SERVICE_GROUPS.flatMap((g) => sorted.filter((s) => s.group === g.id && matchesFilter(s, filter) && matchesQuery(s, query)));
+  const visible = SERVICE_GROUPS(_locale).flatMap((g) => sorted.filter((s) => s.group === g.id && matchesFilter(s, filter) && matchesQuery(s, query)));
   const selected = visible.find((s) => s.id === selectedId) ?? visible[0];
 
   // Das rechte Panel endet immer am unteren Fensterrand: Höhe = Viewport minus
@@ -210,10 +217,10 @@ export function ServicesBrowser({ items, pool, otherIds, connections, nodes: ini
 
   const picker = <ServicePicker pool={pool} connections={connections} onCancel={items.length ? () => setAdding(false) : null}
     onAdded={(ids) => { setAdding(false); setFilter("all"); setSelectedId(`app-${ids[0]}`); setPicked(true); }} />;
-  const panel = (s: (typeof services)[number]) => <article id={s.id} className="panel service-panel" aria-label={`Details zu ${s.name}`}>
+  const panel = (s: (typeof services)[number]) => <article id={s.id} className="panel service-panel" aria-label={_t(_locale, "ServicesBrowser.m0d7024677d", { value0: s.name })}>
     <header className="service-panel-head">
       <h2>{s.name}</h2>
-      <p className="service-meta">{s.domain ? <a href={`https://${s.domain}`} target="_blank" rel="noreferrer">{s.domain} ↗</a> : "Keine Domain"} · {s.meta}</p>
+      <p className="service-meta">{s.domain ? <a href={`https://${s.domain}`} target="_blank" rel="noreferrer">{s.domain} ↗</a> : _t(_locale, "ServicesBrowser.m6e1bd4fbc6")} · {s.meta}</p>
       <ServiceTimes monitors={s.monitors} />
     </header>
     <ServiceStatusSection applicationId={s.applicationId} monitors={s.monitors} mergeMonitors={s.mergeMonitors} readOnly={s.missing} hasRepo={s.hasRepo} hasWatch={s.hasWatch} />
@@ -221,42 +228,42 @@ export function ServicesBrowser({ items, pool, otherIds, connections, nodes: ini
   </article>;
 
   return <>
-    <PageHeader title="Dienste" description="Status, Version und Updates an einem Ort." icon="layers" actions={<>
-      <nav className="view-toggle" aria-label="Ansicht"><Link href="/services" aria-current="page">Liste</Link><Link href="/services?view=sphere">Sphere</Link></nav>
-      <button type="button" className="btn" onClick={() => { setAdding(true); setPicked(true); }}><Icon name="plus" size={18} />Dienst anlegen{newCount > 0 && <span className="service-new-count">{newCount} neu</span>}</button>
+    <PageHeader title={_t(_locale, "ServicesBrowser.ma6f5acc69d")} description={_t(_locale, "ServicesBrowser.m39f9bd86e2")} icon="layers" actions={<>
+      <nav className="view-toggle" aria-label={_t(_locale, "ServicesBrowser.ma6d6105cf9")}><Link href="/services" aria-current="page">{_t(_locale, "ServicesBrowser.m7343841e72")}</Link><Link href="/services?view=sphere">{_t(_locale, "ServicesBrowser.mc9e8a01ef4")}</Link></nav>
+      <button type="button" className="btn" onClick={() => { setAdding(true); setPicked(true); }}><Icon name="plus" size={18} />{_t(_locale, "ServicesBrowser.m99645c3124")}{newCount > 0 && <span className="service-new-count">{newCount} {_t(_locale, "ServicesBrowser.m9897e61a32")}</span>}</button>
     </>} />
     {!items.length ? <div className="inventory-workspace">
       <div className="grid content-start gap-5">
-        <section className="panel service-empty"><Icon name="layers" size={34} /><h2>Noch keine Dienste</h2><p>Wähle die Apps aus Coolify, die Alerd überwachen soll.</p>{mobile && picker}</section>
+        <section className="panel service-empty"><Icon name="layers" size={34} /><h2>{_t(_locale, "ServicesBrowser.maa42243de2")}</h2><p>{_t(_locale, "ServicesBrowser.m11771fce23")}</p>{mobile && picker}</section>
         {(others.length > 0 || !connections.length) && <div className="panel inventory-list"><OtherMonitors monitors={others} always /></div>}
       </div>
       {!mobile && picker}
     </div> : <div className="inventory-workspace">
-      <section className="panel inventory-list" aria-label="Dienste">
+      <section className="panel inventory-list" aria-label={_t(_locale, "ServicesBrowser.ma6f5acc69d")}>
         {mobile && adding && picker}
         <div className="inventory-toolbar">
-          <label className="inventory-search"><Icon name="search" /><input type="search" aria-label="Dienste durchsuchen" placeholder="Dienste durchsuchen …" value={query} onChange={(e) => choose(filter, e.target.value)} /></label>
-          <nav className="inventory-tabs" aria-label="Filter">{FILTERS.map((f) => <a key={f.id} href={`?filter=${f.id}`} aria-current={filter === f.id ? "page" : undefined} onClick={(e) => { e.preventDefault(); choose(f.id); }}>{f.label} <span className="ml-1">{counts[f.id]}</span></a>)}</nav>
+          <label className="inventory-search"><Icon name="search" /><input type="search" aria-label={_t(_locale, "ServicesBrowser.m9c5d49669c")} placeholder={_t(_locale, "ServicesBrowser.m787d7e3b4c")} value={query} onChange={(e) => choose(filter, e.target.value)} /></label>
+          <nav className="inventory-tabs" aria-label={_t(_locale, "ServicesBrowser.m638e249f4a")}>{FILTERS(_locale).map((f) => <a key={f.id} href={`?filter=${f.id}`} aria-current={filter === f.id ? "page" : undefined} onClick={(e) => { e.preventDefault(); choose(f.id); }}>{f.label} <span className="ml-1">{counts[f.id]}</span></a>)}</nav>
         </div>
-        <div className="service-row service-columns" role="row">{([["name", "Dienst", ""], ["status", "Status", ""], ["update", "Update", ""]] as const).map(([key, label, cls]) =>
+        <div className="service-row service-columns" role="row">{([["name", _t(_locale, "ServicesBrowser.mecc4f77cf2"), ""], ["status", _t(_locale, "ServicesBrowser.m920e413c7d"), ""], ["update", "Update", ""]] as const).map(([key, label, cls]) =>
           <button key={key} type="button" role="columnheader" className={`service-sort ${cls}`} aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
             onClick={() => setSort((current) => ({ key, dir: current.key === key ? (current.dir === 1 ? -1 : 1) : 1 }))}>
             {label}{sort.key === key && <span aria-hidden="true">{sort.dir === 1 ? " ↑" : " ↓"}</span>}
           </button>)}</div>
-        {!visible.length && !others.length && <p className="p-8 text-center text-sm text-[var(--fg-dim)]">Keine Dienste für diesen Filter.</p>}
+        {!visible.length && !others.length && <p className="p-8 text-center text-sm text-[var(--fg-dim)]">{_t(_locale, "ServicesBrowser.mbf7582ae25")}</p>}
         {visible.map((s, index) => {
-          const meta = STATUS_META[s.status];
+          const meta = STATUS_META(_locale)[s.status];
           const groupStart = index === 0 || visible[index - 1].group !== s.group;
           const groupSize = groupStart ? visible.filter((v) => v.group === s.group).length : 0;
           const active = !adding && selected?.id === s.id && (picked || !mobile);
           return <Fragment key={s.id}>
-            {groupStart && <div className="inventory-group service-group" role="presentation">{SERVICE_GROUPS.find((g) => g.id === s.group)?.label.toUpperCase()} · {groupSize}</div>}
-            <a href={`#${s.id}`} className={`service-row${s.missing ? " service-row--missing" : ""}`} aria-current={active ? "true" : undefined} aria-label={`Details zu ${s.name}`}
+            {groupStart && <div className="inventory-group service-group" role="presentation">{SERVICE_GROUPS(_locale).find((g) => g.id === s.group)?.label.toUpperCase()} · {groupSize}</div>}
+            <a href={`#${s.id}`} className={`service-row${s.missing ? " service-row--missing" : ""}`} aria-current={active ? "true" : undefined} aria-label={_t(_locale, "ServicesBrowser.m0d7024677d", { value0: s.name })}
               data-service-row={s.id} aria-expanded={mobile ? active : undefined}
               onClick={(e) => { e.preventDefault(); tapRow(s.id, active); }}>
-              <span className="inventory-row-name"><span className="inventory-app-icon"><Icon name="layers" size={19} /></span><span className="min-w-0"><span className="inventory-row-title">{s.name}</span><span className="inventory-row-domain">{s.missing ? "nicht mehr in Coolify" : s.domain ?? "Keine Domain"}</span></span></span>
+              <span className="inventory-row-name"><span className="inventory-app-icon"><Icon name="layers" size={19} /></span><span className="min-w-0"><span className="inventory-row-title">{s.name}</span><span className="inventory-row-domain">{s.missing ? _t(_locale, "ServicesBrowser.mdffddcba6d") : s.domain ?? _t(_locale, "ServicesBrowser.m6e1bd4fbc6")}</span></span></span>
               <span className="inventory-row-status"><span className={`led led--${meta.cls}`} />{meta.label}
-                {s.tally && <span className={`service-tally service-tally--${s.tally.level}`} title={`${s.tally.ok} von ${s.tally.total} Checks in Ordnung`}>{s.tally.ok}/{s.tally.total}</span>}</span>
+                {s.tally && <span className={`service-tally service-tally--${s.tally.level}`} title={_t(_locale, "ServicesBrowser.md73ff0c8de", { value0: s.tally.ok, value1: s.tally.total })}>{s.tally.ok}/{s.tally.total}</span>}</span>
               <span><UpdateChip item={s} /></span>
             </a>
             {mobile && active && <div className="inventory-mobile-detail">{panel(s)}</div>}

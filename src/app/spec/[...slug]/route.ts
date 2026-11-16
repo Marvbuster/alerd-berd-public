@@ -23,6 +23,7 @@ const FILES: Record<string, { file: string; type: string }> = {
   "alerd-health.schema.json": { file: "alerd-health.schema.json", type: "application/json; charset=utf-8" },
   "example-health.json": { file: "example-health.json", type: "application/json; charset=utf-8" },
   "implementing-health.md": { file: "implementing-health.md", type: "text/markdown; charset=utf-8" },
+  "implementing-health.en.md": { file: "implementing-health.en.md", type: "text/markdown; charset=utf-8" },
 };
 
 function bearer(header: string | null): string | null {

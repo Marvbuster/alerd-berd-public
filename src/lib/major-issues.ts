@@ -1,3 +1,4 @@
+import { translate as _t } from "@/i18n/translate";
 // Offene Bug-Issues einer empfohlenen Major (src/data/recommended-majors.json).
 // Reine Helfer, der Abruf steckt in version-watch.ts.
 import semver from "semver";
@@ -30,8 +31,8 @@ export function parseIssueSearch(json: SearchResult, base: Omit<MajorIssues, "to
   return { ...base, total: json.total_count ?? top.length, top };
 }
 
-export function majorIssuesLine(i: MajorIssues): string {
-  if (!i.total) return `Keine offenen Bug-Issues seit ${i.major}.0 (${i.repo})`;
-  const head = `${i.total} offene Bug-Issue${i.total === 1 ? "" : "s"} seit ${i.major}.0`;
-  return i.top[0] ? `${head}, meistdiskutiert: ${i.top[0].title}` : head;
+export function majorIssuesLine(i: MajorIssues, _locale: string = "de"): string {
+  if (!i.total) return _t(_locale, "major_issues.m92e7220aa3", { value0: i.major, value1: i.repo });
+  const head = _t(_locale, "major_issues.me1be307739", { value0: i.total, value1: i.total === 1 ? "" : "s", value2: i.major });
+  return i.top[0] ? _t(_locale, "common.mostDiscussed", { head, title: i.top[0].title }) : head;
 }

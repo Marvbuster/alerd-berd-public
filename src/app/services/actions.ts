@@ -1,5 +1,7 @@
 "use server";
 
+import { messageCode as _code } from "@/i18n/translate";
+
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
@@ -54,13 +56,13 @@ async function probe(url: string): Promise<{ status: number; json: unknown } | n
 export async function addServices(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
   const ids = form.getAll("applicationId").map(String).filter((id) => /^[a-z0-9-]{10,40}$/i.test(id)).slice(0, 200);
-  if (!ids.length) return { ok: false, message: "Mindestens eine App auswählen." };
+  if (!ids.length) return { ok: false, message: _code("actions.ma7c3b23b74") };
   const result = await prisma.coolifyApplication.updateMany({
     where: { id: { in: ids }, serviceAt: null, missingSince: null, connection: { ownerId: user.id } },
     data: { serviceAt: new Date(), hiddenAt: null },
   });
   refresh();
-  return result.count ? { ok: true, ids } : { ok: false, message: "Die Apps sind schon angelegt oder nicht mehr in Coolify." };
+  return result.count ? { ok: true, ids } : { ok: false, message: _code("actions.me86ffd7e80") };
 }
 
 // Zurück in den Vorrat. Die Monitore bleiben samt Verlauf erhalten, aber
@@ -79,9 +81,9 @@ export async function removeService(applicationId: string): Promise<void> {
 export async function suggestMonitoring(applicationId: string): Promise<SuggestState> {
   const user = await requireUser();
   const app = await ownService(applicationId, user.id);
-  if (!app) return { ok: false, message: "Dienst nicht gefunden." };
+  if (!app) return { ok: false, message: _code("actions.m61d9fa3d80") };
   const origins = originsOf(app.domains);
-  if (!origins.length) return { ok: true, suggestion: null, origins, message: "Keine öffentliche https-Domain in Coolify hinterlegt." };
+  if (!origins.length) return { ok: true, suggestion: null, origins, message: _code("actions.mc22a4464ca") };
   let liveness: string | null = null;
   for (const origin of origins) {
     for (const path of SPEC_PATHS) {
@@ -108,20 +110,20 @@ const KIND_NAME = { HEALTH: "Spec-Health", HTTP: "Erreichbarkeit", PUSH: "Push" 
 export async function createServiceMonitor(applicationId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
   const app = await ownService(applicationId, user.id);
-  if (!app) return { ok: false, message: "Dienst nicht gefunden." };
+  if (!app) return { ok: false, message: _code("actions.m61d9fa3d80") };
   const kindRaw = String(form.get("kind") ?? "");
   const kind = kindRaw === "HTTP" ? "HTTP" : kindRaw === "PUSH" ? "PUSH" : "HEALTH";
   const origins = originsOf(app.domains);
   const origin = String(form.get("origin") ?? "");
   // Nur Ziele aus den eigenen Domains, keine frei eingegebenen URLs.
-  if (kind !== "PUSH" && !origins.includes(origin)) return { ok: false, message: "Domain passt nicht zur App." };
+  if (kind !== "PUSH" && !origins.includes(origin)) return { ok: false, message: _code("actions.m3b3077ba92") };
   const healthPath = kind === "HEALTH" ? String(form.get("healthPath") ?? "") : null;
   const httpPath = String(form.get("httpPath") ?? "/").trim() || "/";
-  if (kind === "HTTP" && !httpPathOk(httpPath)) return { ok: false, message: "Pfad muss mit / beginnen, etwa / oder /api/health." };
-  if (kind === "HEALTH" && !SPEC_PATHS.includes(healthPath as (typeof SPEC_PATHS)[number])) return { ok: false, message: "Unbekannter Health-Pfad." };
+  if (kind === "HTTP" && !httpPathOk(httpPath)) return { ok: false, message: _code("actions.mda3553e2d4") };
+  if (kind === "HEALTH" && !SPEC_PATHS.includes(healthPath as (typeof SPEC_PATHS)[number])) return { ok: false, message: _code("actions.unknownHealthPath") };
   // Leer ist erlaubt (offene Spec-Route); sonst ein vollständiger Token ohne Leerzeichen.
   const bearerToken = kind === "HEALTH" ? String(form.get("bearerToken") ?? "").trim() : "";
-  if (bearerToken && (bearerToken.length < 16 || bearerToken.length > 500 || /\s/.test(bearerToken))) return { ok: false, message: "Token der App vollständig einfügen." };
+  if (bearerToken && (bearerToken.length < 16 || bearerToken.length > 500 || /\s/.test(bearerToken))) return { ok: false, message: _code("actions.m341909ac05") };
   const target = kind === "HTTP" ? origin + httpPath : kind === "HEALTH" ? origin : (hostOf(app.domains?.split(/[\s,]+/)[0]) ?? app.name);
 
   const existing = await prisma.monitor.findMany({ select: { phase: true } });
@@ -151,13 +153,13 @@ export async function createServiceMonitor(applicationId: string, _prev: ActionS
       fd.set("manifestPath", `${dir ? `${dir}/` : ""}package.json`); fd.set("lockfilePath", `${dir ? `${dir}/` : ""}package-lock.json`);
       const saved = await saveRepository(app.id, {}, fd);
       const watch = saved.ok ? await prisma.repositoryWatch.findUnique({ where: { applicationId: app.id }, select: { id: true } }) : null;
-      if (watch) { try { await scanRepository(watch.id, user.id); } catch { note = " Versionen konnten noch nicht gelesen werden."; } }
-      else note = " Versionsüberwachung bitte in der Version manuell einrichten.";
-    } else note = " Für die Versionsüberwachung fehlt in Coolify ein GitHub-Repo mit Branch.";
+      if (watch) { try { await scanRepository(watch.id, user.id); } catch { note = _code("actions.m922b8ad188"); } }
+      else note = _code("actions.m4900e4e679");
+    } else note = _code("actions.m843a0303a0");
   }
   refresh();
   revalidatePath(`/monitors/${monitor.id}`);
-  return { ok: true, message: `Monitor angelegt.${note}` };
+  return { ok: true, message: _code("actions.ma4bc3085f3", { value0: note }) };
 }
 
 // Pakete beobachten: Auswahl aus den direkten Abhängigkeiten des Git-Stands.
@@ -168,7 +170,7 @@ export async function setWatchedPackages(applicationId: string, _state: ActionSt
     where: { applicationId, application: { connection: { ownerId: user.id } } },
     select: { id: true, snapshot: { select: { dependencies: true } }, packages: { select: { name: true } } },
   });
-  if (!watch) return { ok: false, message: "Erst die Versionsüberwachung einrichten." };
+  if (!watch) return { ok: false, message: _code("actions.m7435a96c7d") };
   const known = new Set((Array.isArray(watch.snapshot?.dependencies) ? watch.snapshot.dependencies as { name?: unknown }[] : []).map((d) => d.name).filter((n): n is string => typeof n === "string"));
   const picked = [...new Set(form.getAll("package").map(String))].filter((name) => known.has(name)).slice(0, 60);
   const current = watch.packages.map((p) => p.name);
@@ -180,5 +182,5 @@ export async function setWatchedPackages(applicationId: string, _state: ActionSt
   // Neue Pakete brauchen npm-Stand und Sicherheitsmeldungen, sonst bleibt die Zeile leer.
   if (added.length) await refreshReferenceData().catch(() => {});
   refresh();
-  return { ok: true, message: picked.length ? `${picked.length === 1 ? "1 Paket" : `${picked.length} Pakete`} beobachtet.` : "Kein Paket beobachtet." };
+  return { ok: true, message: picked.length ? `${picked.length === 1 ? _code("actions.m4f7049ff4e") : _code("actions.md86d6fe8ce", { value0: picked.length })} beobachtet.` : _code("actions.me854070895") };
 }

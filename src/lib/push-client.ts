@@ -1,3 +1,4 @@
+import { messageCode as _code, translate } from "@/i18n/translate";
 // Web Push im Browser: Berechtigung abfragen, Service Worker registrieren,
 // Abo beim Server speichern. Genutzt von den Einstellungen und der Glocke.
 
@@ -24,18 +25,18 @@ export async function pushState(): Promise<PushState> {
   return (await reg?.pushManager.getSubscription()) ? "on" : "off";
 }
 
-export async function subscribePush(): Promise<{ ok: boolean; message: string }> {
-  if (!pushSupported()) return { ok: false, message: "Browser unterstützt kein Web Push" };
+export async function subscribePush(locale = "de"): Promise<{ ok: boolean; message: string }> {
+  if (!pushSupported()) return { ok: false, message: _code("actions.md8c983d9b3") };
   const { key } = await fetch("/api/push/public-key").then((r) => r.json());
-  if (!key) return { ok: false, message: "VAPID nicht konfiguriert (VAPID_PUBLIC_KEY setzen)" };
+  if (!key) return { ok: false, message: _code("actions.m6dc0ad18ed") };
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") return { ok: false, message: perm === "denied" ? "Im Browser blockiert, in den Website-Einstellungen erlauben" : "Benachrichtigungen nicht erlaubt" };
+  if (perm !== "granted") return { ok: false, message: perm === "denied" ? _code("actions.mf8c683d2dd") : _code("actions.m3a2cd6347c") };
   const reg = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(key) as BufferSource });
   const res = await fetch("/api/push/subscribe", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ subscription: sub, label: `Push (${navigator.platform || "Gerät"})` }),
+    body: JSON.stringify({ subscription: sub, label: translate(locale, "actions.pushLabel", { device: navigator.platform || translate(locale, "common.device") }) }),
   });
-  return res.ok ? { ok: true, message: "Dieses Gerät ist abonniert" } : { ok: false, message: "Fehler beim Speichern" };
+  return res.ok ? { ok: true, message: _code("actions.mccb114067d") } : { ok: false, message: _code("actions.mf5dae288d9") };
 }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
+import { render } from "@/test/render";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { InventoryBrowser, type InventoryItem } from "./InventoryBrowser";

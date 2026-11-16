@@ -1,3 +1,4 @@
+import { messageCode as _code } from "@/i18n/translate";
 // Versionswächter — reine Bewertungslogik (kein I/O, voll testbar).
 // Nimmt die live gemeldete Version + Referenzwissen (Advisories, npm-Releases,
 // kuratierte Known Issues) und leitet eine Stufe ab. Getrennt von der
@@ -39,7 +40,9 @@ export interface KnownIssue {
   range: string;
   kind: "leak" | "regression" | "build-trap";
   title: string;
+  titleEn?: string;
   hint?: string;
+  hintEn?: string;
   source: string;
   addedAt: string;
 }
@@ -54,6 +57,7 @@ export interface Finding {
   level: Exclude<WatchLevel, "ok" | "unknown">;
   kind: "advisory" | "known-issue" | "patch-backlog" | "newer-release" | "upgrade-note";
   title: string;
+  titleEn?: string;
   url?: string;
   ghsaId?: string;
   severity?: Severity;
@@ -165,12 +169,12 @@ export function evaluate(
       // Build-Fallen betreffen das UPGRADE, nicht den laufenden Dienst: Hinweis,
       // wenn das Upgrade-Ziel (latest) im Range liegt, die laufende Version nicht.
       if (latest && semver.satisfies(latest, k.range) && !semver.satisfies(version, k.range, { includePrerelease: true })) {
-        findings.push({ level: "hint", kind: "upgrade-note", title: k.hint ? `${k.title}. ${k.hint}` : k.title, url: sourceUrl(k.source) });
+        findings.push({ level: "hint", kind: "upgrade-note", title: k.hint ? `${k.title}. ${k.hint}` : k.title, ...(k.titleEn ? { titleEn: k.hintEn ? `${k.titleEn}. ${k.hintEn}` : k.titleEn } : {}), url: sourceUrl(k.source) });
       }
       continue;
     }
     if (semver.satisfies(version, k.range, { includePrerelease: true })) {
-      findings.push({ level: "orange", kind: "known-issue", title: k.title, url: sourceUrl(k.source) });
+      findings.push({ level: "orange", kind: "known-issue", title: k.title, ...(k.titleEn ? { titleEn: k.titleEn } : {}), url: sourceUrl(k.source) });
     }
   }
 
@@ -181,9 +185,9 @@ export function evaluate(
       const released = registry.versions[top] ? new Date(registry.versions[top]) : null;
       const ageDays = released ? (now.getTime() - released.getTime()) / 86_400_000 : 0;
       if (ageDays > PATCH_BACKLOG_DAYS) {
-        findings.push({ level: "orange", kind: "patch-backlog", title: `Patch ${top} ist seit ${Math.floor(ageDays)} Tagen verfügbar` });
+        findings.push({ level: "orange", kind: "patch-backlog", title: _code("findings.mb02d5f7669", { value0: top, value1: Math.floor(ageDays) }) });
       } else {
-        findings.push({ level: "hint", kind: "newer-release", title: `Patch ${top} verfügbar (seit ${Math.max(0, Math.floor(ageDays))} Tagen)` });
+        findings.push({ level: "hint", kind: "newer-release", title: _code("findings.m5d3f92d459", { value0: top, value1: Math.max(0, Math.floor(ageDays)) }) });
       }
     }
   }
@@ -191,7 +195,7 @@ export function evaluate(
   // 4. Neuere Minor/Major
   if (latest && semver.valid(latest) && semver.gt(latest, version)) {
     const sameLine = semver.major(latest) === semver.major(version) && semver.minor(latest) === semver.minor(version);
-    if (!sameLine) findings.push({ level: "hint", kind: "newer-release", title: `${pkg} ${latest} ist aktuell` });
+    if (!sameLine) findings.push({ level: "hint", kind: "newer-release", title: _code("findings.ma0c8eb8244", { value0: pkg, value1: latest }) });
   }
 
   findings.sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level]);
@@ -264,16 +268,16 @@ export function evaluateNode(version: string | null, ref: NodeRef | null, now: D
   if (plan) {
     const end = new Date(plan.end);
     const days = (end.getTime() - now.getTime()) / 86_400_000;
-    if (days < 0) findings.push({ level: "red", kind: "known-issue", title: `Node ${major} wird seit ${day(plan.end)} nicht mehr unterstützt` });
-    else if (days < NODE_EOL_WARN_DAYS) findings.push({ level: "orange", kind: "known-issue", title: `Support für Node ${major} endet am ${day(plan.end)}` });
-    else if (!plan.lts) findings.push({ level: "hint", kind: "upgrade-note", title: `Node ${major} ist keine LTS-Version` });
+    if (days < 0) findings.push({ level: "red", kind: "known-issue", title: _code("findings.m27e918e03e", { value0: major, value1: day(plan.end) }) });
+    else if (days < NODE_EOL_WARN_DAYS) findings.push({ level: "orange", kind: "known-issue", title: _code("findings.mc2e0969950", { value0: major, value1: day(plan.end) }) });
+    else if (!plan.lts) findings.push({ level: "hint", kind: "upgrade-note", title: _code("findings.m680d75af7f", { value0: major }) });
   }
   const security = sameMajor.filter((v) => ref?.releases[v]?.security);
   if (security.length) {
     const top = semver.rsort([...security])[0];
-    findings.push({ level: "orange", kind: "patch-backlog", title: `Sicherheits-Release Node ${top} verfügbar`, fixedIn: top });
+    findings.push({ level: "orange", kind: "patch-backlog", title: _code("findings.m21ab0af9e8", { value0: top }), fixedIn: top });
   } else if (latest !== version) {
-    findings.push({ level: "hint", kind: "newer-release", title: `Node ${latest} verfügbar` });
+    findings.push({ level: "hint", kind: "newer-release", title: _code("findings.m58c68aaebb", { value0: latest }) });
   }
   findings.sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level]);
   return { level: findings.length ? findings[0].level : "ok", findings, latest };

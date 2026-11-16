@@ -16,7 +16,7 @@ export type DependencyNotification = {
 // noch eine Woche lang, abgebrochene gar nicht.
 const RECENT_MS = 7 * 24 * 60 * 60_000;
 
-export async function loadDependencyNotifications(ownerId: string, now = new Date()): Promise<DependencyNotification[]> {
+export async function loadDependencyNotifications(ownerId: string, now = new Date(), locale = "de"): Promise<DependencyNotification[]> {
   const jobs = await prisma.dependencyJob.findMany({
     where: {
       ownerId, status: { not: "CANCELLED" },
@@ -25,13 +25,13 @@ export async function loadDependencyNotifications(ownerId: string, now = new Dat
     orderBy: { updatedAt: "desc" }, take: 40,
     select: { id: true, applicationId: true, packageName: true, targetVersion: true, packages: true, status: true, updatedAt: true, seenAt: true, workerLockedUntil: true, workerAttemptAt: true, lastError: true, progress: true, application: { select: { name: true } } },
   });
-  const { busy: workerBusy, lastSeen: workerLastSeen } = jobs.some((j) => !TERMINAL_STATUSES.includes(j.status)) ? await loadWorkerStatus(now) : { busy: null, lastSeen: null };
+  const { busy: workerBusy, lastSeen: workerLastSeen } = jobs.some((j) => !TERMINAL_STATUSES.includes(j.status)) ? await loadWorkerStatus(now, locale) : { busy: null, lastSeen: null };
   const latest = new Map<string, (typeof jobs)[number]>();
   for (const job of jobs) if (!latest.has(job.applicationId)) latest.set(job.applicationId, job);
   return [...latest.values()].map((job) => {
-    const phase = dependencyPhase(job, now, { workerBusy, workerLastSeen });
+    const phase = dependencyPhase(job, now, { workerBusy, workerLastSeen }, locale);
     return {
-      jobId: job.id, applicationId: job.applicationId, applicationName: job.application.name, targetVersion: job.targetVersion, label: jobLabel(jobPackages(job)),
+      jobId: job.id, applicationId: job.applicationId, applicationName: job.application.name, targetVersion: job.targetVersion, label: jobLabel(jobPackages(job), locale),
       actor: phase.actor, title: phase.title, since: phase.since?.toISOString() ?? null, changedAt: job.updatedAt.toISOString(),
       unread: isUnread(phase, job),
       current: phase.actor === "worker" ? currentStep(parseProgress(job.progress))?.label ?? null : null,

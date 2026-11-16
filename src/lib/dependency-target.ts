@@ -1,6 +1,7 @@
 import semver from "semver";
 import { inGhsaRange } from "./version-watch-logic";
 import type { MajorIssues } from "./major-issues";
+import { translate } from "@/i18n/translate";
 
 // Ab diesen Zuständen ist der Bump auf GitHub, das Ziel gilt als geliefert.
 export const DELIVERED_STATUSES = ["PUBLISHING", "PUSHED", "DEPLOYING", "LIVE_REVIEW", "LIVE", "LIVE_UNVERIFIED"];
@@ -19,9 +20,9 @@ export function jobPackages(job: JobLike): JobPackage[] {
   return list.length ? list.slice(0, 20) : [{ name: job.packageName ?? "next", version: job.targetVersion, from: null }];
 }
 
-export function jobLabel(list: { name: string; version: string }[]): string {
+export function jobLabel(list: { name: string; version: string }[], locale = "de"): string {
   const one = (p: { name: string; version: string }) => `${p.name === "next" ? "Next" : p.name} ${p.version}`;
-  return list.length <= 2 ? list.map(one).join(", ") : `${list.length} Pakete`;
+  return list.length <= 2 ? list.map(one).join(", ") : translate(locale, "common.packagesCount", { count: list.length });
 }
 
 // Ist ein Update auf target schon erledigt? Der gespeicherte Git-Stand hinkt
@@ -47,20 +48,20 @@ export type UpdateCandidate = {
   // Gesetzt, wenn das Ziel eine empfohlene Major ist (src/data/recommended-majors.json),
   // samt offener Bug-Issues seit Erscheinen der Major, sobald abgerufen.
   // hold: ein bekanntes Problem trifft die Zielversion, dann heißt es „abwarten“ statt „empfohlen“.
-  recommended?: { title: string; source: string; issues?: MajorIssues | null; hold?: boolean };
+  recommended?: { title: string; titleEn?: string; source: string; issues?: MajorIssues | null; hold?: boolean };
   // Einträge aus known-issues.json, deren Range die Zielversion trifft.
-  knownIssues?: { title: string; kind: string; url?: string }[];
+  knownIssues?: { title: string; titleEn?: string; kind: string; url?: string }[];
 };
 
 // Bekannte Probleme (src/data/known-issues.json), die die Zielversion treffen.
 // Build-Fallen mit Hinweis, weil sie beim Update selbst zuschlagen.
-export function knownIssuesFor(name: string, to: string, issues: { package: string; range: string; kind: string; title: string; hint?: string; source: string }[]) {
+export function knownIssuesFor(name: string, to: string, issues: { package: string; range: string; kind: string; title: string; titleEn?: string; hint?: string; hintEn?: string; source: string }[]) {
   return issues.filter((k) => k.package === name && semver.validRange(k.range) && semver.satisfies(to, k.range)).map((k) => ({
-    title: k.hint ? `${k.title}. ${k.hint}` : k.title, kind: k.kind, ...(/^https?:\/\//.test(k.source) ? { url: k.source } : {}),
+    title: k.hint ? `${k.title}. ${k.hint}` : k.title, ...(k.titleEn ? { titleEn: k.hintEn ? `${k.titleEn}. ${k.hintEn}` : k.titleEn } : {}), kind: k.kind, ...(/^https?:\/\//.test(k.source) ? { url: k.source } : {}),
   }));
 }
 
-export type RecommendedMajor = { package: string; major: number; title: string; source: string };
+export type RecommendedMajor = { package: string; major: number; title: string; titleEn?: string; source: string };
 
 function releasedAt(versions: Record<string, string> | null | undefined, version: string): Date | null {
   const value = versions?.[version];
@@ -137,6 +138,6 @@ export function updateCandidate(name: string, from: string | null, versions: Rec
   const rec = recommended.find((r) => r.package === name && r.major === semver.major(to) && r.major > semver.major(from));
   return {
     name, from, to, jump, breaking, security: fixes.some((fix) => semver.gte(to, fix.version)), critical: picked.critical,
-    ...(rec ? { recommended: { title: rec.title, source: rec.source } } : {}),
+    ...(rec ? { recommended: { title: rec.title, ...(rec.titleEn ? { titleEn: rec.titleEn } : {}), source: rec.source } } : {}),
   };
 }

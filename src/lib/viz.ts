@@ -1,3 +1,4 @@
+import { translate as _t } from "@/i18n/translate";
 // Gemeinsame Typen/Helfer für die Konstellations-Visualisierung.
 // Server-safe (kein Browser-API) — wird sowohl in der Page (Datenaufbau) als
 // auch in den Client-Components (Typen) importiert.
@@ -51,13 +52,14 @@ export const WATCH_COLOR: Record<WatchLevel, string> = {
   unknown: "#a3b6cf",
 };
 
-export const WATCH_LABEL: Record<WatchLevel, string> = {
-  red: "betroffen",
-  orange: "veraltet",
-  hint: "update da",
-  ok: "aktuell",
-  unknown: "keine angabe",
-};
+export function localizedWATCH_LABEL(_locale: string = "de"): Record<WatchLevel, string> { return ({
+  red: _t(_locale, "viz.m6438846403"),
+  orange: _t(_locale, "viz.mab2cbd984c"),
+  hint: _t(_locale, "viz.m6c6f456f2b"),
+  ok: _t(_locale, "viz.m2b31477379"),
+  unknown: _t(_locale, "viz.m34eec17ffd"),
+}); }
+export const WATCH_LABEL = localizedWATCH_LABEL();
 
 export interface VizNode {
   id: string;
@@ -99,7 +101,8 @@ export function historyPointKind(p: HistoryPoint): PointKind {
   return p.ms == null ? "event" : "measured";
 }
 
-export const STATUS_LABEL: Record<VizStatus, string> = { UP: "Online", DEGRADED: "Eingeschränkt", DOWN: "Offline", UNKNOWN: "Unbekannt" };
+export function localizedSTATUS_LABEL(_locale: string = "de"): Record<VizStatus, string> { return ({ UP: _t(_locale, "viz.m0d21bd5202"), DEGRADED: _t(_locale, "viz.m55b60500c7"), DOWN: _t(_locale, "viz.ma1794783aa"), UNKNOWN: _t(_locale, "viz.m276ffa1fb4") }); }
+export const STATUS_LABEL = localizedSTATUS_LABEL();
 
 // Spec-Status-Wort ("ok"/"degraded"/"down") → Ampelfarbe. Unbekannt → UNKNOWN.
 export function healthColor(status: string): string {

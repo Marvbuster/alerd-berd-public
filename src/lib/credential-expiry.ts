@@ -1,3 +1,4 @@
+import { translate as _t } from "@/i18n/translate";
 // Ablauf gespeicherter Zugänge, reine Logik. GitHub nennt das Ablaufdatum eines
 // Tokens in jeder API-Antwort im Header github-authentication-token-expiration,
 // der Claude-Code-Token aus `claude setup-token` gilt ein Jahr.
@@ -35,16 +36,16 @@ export function dueWarning(days: number, warnedDays: number | null): number | nu
   return warnedDays == null || step < warnedDays ? step : null;
 }
 
-export function expiryPhrase(days: number): string {
-  if (days < 0) return "ist abgelaufen";
-  if (days === 0) return "läuft heute ab";
-  if (days === 1) return "läuft morgen ab";
-  return `läuft in ${days} Tagen ab`;
+export function expiryPhrase(days: number, _locale: string = "de"): string {
+  if (days < 0) return _t(_locale, "credential_expiry.mcf0bc21df6");
+  if (days === 0) return _t(_locale, "credential_expiry.m7fc0c3ff19");
+  if (days === 1) return _t(_locale, "credential_expiry.me477a24ba9");
+  return _t(_locale, "credential_expiry.m15fdab428c", { value0: days });
 }
 
 export type ExpiringCredential = { label: string; expiresAt: Date };
 
 // Der Zugang, der als Nächstes abläuft, für Spec-Health und Anzeige.
-export function soonest(list: ExpiringCredential[]): ExpiringCredential | null {
-  return list.reduce<ExpiringCredential | null>((best, c) => (!best || c.expiresAt < best.expiresAt ? c : best), null);
+export function soonest<T extends ExpiringCredential>(list: T[]): T | null {
+  return list.reduce<T | null>((best, c) => (!best || c.expiresAt < best.expiresAt ? c : best), null);
 }

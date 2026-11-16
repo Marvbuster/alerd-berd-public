@@ -1,43 +1,50 @@
 "use client";
+import { localizedTitle } from "@/i18n/data";
+
+import { translateMessage as _message } from "@/i18n/translate";
+
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
 
 import { useActionState, useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { setWatchedPackages, type ActionState } from "@/app/services/actions";
-import { WATCH_COLOR, WATCH_LABEL } from "@/lib/viz";
+import { WATCH_COLOR, localizedWATCH_LABEL as WATCH_LABEL } from "@/lib/viz";
 import type { ServicePackage } from "@/lib/services";
 import type { UpdateCandidate } from "@/lib/dependency-target";
 import type { DirectDependency } from "@/lib/repository-logic";
 
 // Art des Updates kurz hinter der Zielversion, wie in „Update prüfen“.
-function updateKind(c: UpdateCandidate): string | null {
-  if (c.critical) return "kritischer Fix";
-  if (c.security) return "Sicherheit";
-  if (c.recommended) return c.recommended.hold ? "Major, abwarten" : "Major, empfohlen";
+function updateKind(c: UpdateCandidate, _locale: string = "de"): string | null {
+  if (c.critical) return _t(_locale, "ServicePackages.m038a924d18");
+  if (c.security) return _t(_locale, "common.security");
+  if (c.recommended) return c.recommended.hold ? _t(_locale, "ServicePackages.ma0a128c98c") : _t(_locale, "ServicePackages.m8dc5c3f056");
   return c.jump === "minor" ? "Minor" : c.jump === "major" ? "Major" : null;
 }
 
-function updateTitle(c: UpdateCandidate): string | undefined {
-  return [c.recommended?.title, ...(c.knownIssues ?? []).map((k) => `Bekanntes Problem: ${k.title}`)].filter(Boolean).join("\n") || undefined;
+function updateTitle(c: UpdateCandidate, _locale: string = "de"): string | undefined {
+  return [(c.recommended ? localizedTitle(c.recommended, _locale) : undefined), ...(c.knownIssues ?? []).map((k) => _t(_locale, "ServicePackages.mc50aa5ed90", { value0: localizedTitle(k, _locale) }))].filter(Boolean).join("\n") || undefined;
 }
 
 // Beobachtete Pakete, next eingeschlossen: eine Zeile pro Paket, Version rechts, Stufe als
 // Chip nur bei Handlungsbedarf. Darunter die Auswahl aus allen Abhängigkeiten.
 export function PackageRow({ pkg, label }: { pkg: ServicePackage; label?: string }) {
+  const _locale = _useLocale();
   // Patch-Rückstand steht schon als „↑ Version“ in der Zeile, hier nur echte Meldungen.
   const serious = pkg.findings.filter((f) => (f.level === "red" || f.level === "orange") && f.kind !== "patch-backlog" && f.kind !== "newer-release");
   const color = WATCH_COLOR[pkg.level];
   return <div><dt className="font-mono" title={pkg.name}>{label ?? pkg.name}</dt><dd>
-    {pkg.version ? <span className="font-mono">{pkg.version}</span> : <span className="text-[var(--fg-dim)]">nicht im Lockfile</span>}
-    {pkg.source === "live" && <span className="service-meta" title="Vom Dienst über die Spec-Health gemeldet">live</span>}
-    {pkg.source === "git" && <span className="service-meta" title="Version aus dem Lockfile im Git-Stand, der Dienst meldet sie nicht live">Git</span>}
-    {pkg.source === "live" && pkg.gitVersion && pkg.gitVersion !== pkg.version && <span className="service-chip service-chip--warn" title={`Im Git-Stand steht ${pkg.gitVersion}`}>Git {pkg.gitVersion}</span>}
-    {(pkg.level === "red" || pkg.level === "orange") && <span className="service-chip" style={{ color, borderColor: color }}>{WATCH_LABEL[pkg.level]}</span>}
-    {pkg.update ? <span className="font-mono text-xs text-[var(--amber)]" title={updateTitle(pkg.update)}>↑ {pkg.update.to}{updateKind(pkg.update) && <span className="service-meta"> {updateKind(pkg.update)}</span>}</span>
+    {pkg.version ? <span className="font-mono">{pkg.version}</span> : <span className="text-[var(--fg-dim)]">{_t(_locale, "ServicePackages.mcfc7b52ab5")}</span>}
+    {pkg.source === "live" && <span className="service-meta" title={_t(_locale, "ServicePackages.mde8a6ebb67")}>{_t(_locale, "ServicePackages.m247610f4de")}</span>}
+    {pkg.source === "git" && <span className="service-meta" title={_t(_locale, "ServicePackages.mdf11a29649")}>{_t(_locale, "ServicePackages.mb949c922b6")}</span>}
+    {pkg.source === "live" && pkg.gitVersion && pkg.gitVersion !== pkg.version && <span className="service-chip service-chip--warn" title={_t(_locale, "ServicePackages.m6814434f89", { value0: pkg.gitVersion })}>{_t(_locale, "ServicePackages.mbc31265854")}{pkg.gitVersion}</span>}
+    {(pkg.level === "red" || pkg.level === "orange") && <span className="service-chip" style={{ color, borderColor: color }}>{WATCH_LABEL(_locale)[pkg.level]}</span>}
+    {pkg.update ? <span className="font-mono text-xs text-[var(--amber)]" title={updateTitle(pkg.update, _locale)}>↑ {pkg.update.to}{updateKind(pkg.update, _locale) && <span className="service-meta"> {updateKind(pkg.update, _locale)}</span>}</span>
       : pkg.latestPatch && <span className="font-mono text-xs text-[var(--amber)]">↑ {pkg.latestPatch}</span>}
-    {serious.length > 0 && <details className="service-findings w-full"><summary style={{ color }}>{serious.length === 1 ? "1 Meldung" : `${serious.length} Meldungen`}</summary>
-      <ul>{serious.map((f) => <li key={f.ghsaId ?? f.title} style={{ color: WATCH_COLOR[f.level] }}>
-        {f.url ? <a href={f.url} target="_blank" rel="noreferrer">{f.ghsaId ?? f.title}</a> : f.ghsaId ?? f.title}
-        {f.ghsaId && <span className="service-meta"> · {f.title}</span>}{f.fixedIn ? <span className="service-meta"> · gefixt ab {f.fixedIn}</span> : null}
+    {serious.length > 0 && <details className="service-findings w-full"><summary style={{ color }}>{serious.length === 1 ? _t(_locale, "ServicePackages.m1d74958c9c") : _t(_locale, "ServicePackages.m8b7c8e2430", { value0: serious.length })}</summary>
+      <ul>{serious.map((f) => <li key={f.ghsaId ?? localizedTitle(f, _locale)} style={{ color: WATCH_COLOR[f.level] }}>
+        {f.url ? <a href={f.url} target="_blank" rel="noreferrer">{f.ghsaId ?? localizedTitle(f, _locale)}</a> : f.ghsaId ?? localizedTitle(f, _locale)}
+        {f.ghsaId && <span className="service-meta"> · {localizedTitle(f, _locale)}</span>}{f.fixedIn ? <span className="service-meta"> {_t(_locale, "ServicePackages.mbccb769eca")}{f.fixedIn}</span> : null}
       </li>)}</ul>
     </details>}
   </dd></div>;
@@ -46,12 +53,13 @@ export function PackageRow({ pkg, label }: { pkg: ServicePackage; label?: string
 export function ServicePackages({ applicationId, packages, dependencies, scanned, readOnly }: {
   applicationId: string; packages: ServicePackage[]; dependencies: DirectDependency[]; scanned: boolean; readOnly: boolean;
 }) {
+  const _locale = _useLocale();
   const [open, setOpen] = useState(false);
   return <div className="mt-5">
-    <h4 className="service-subhead">Pakete</h4>
+    <h4 className="service-subhead">{_t(_locale, "ServicePackages.me1a11ce2f7")}</h4>
     {packages.length > 0 && <dl className="service-facts">{packages.map((p) => <PackageRow key={p.name} pkg={p} />)}</dl>}
-    {!readOnly && (!scanned ? <p className="service-hint">Die Abhängigkeiten liest Alerd beim nächsten Git-Scan, oder sofort mit „Versionen prüfen“.</p>
-      : <button type="button" className="btn btn--ghost mt-3" onClick={() => setOpen(true)}>Pakete überwachen</button>)}
+    {!readOnly && (!scanned ? <p className="service-hint">{_t(_locale, "ServicePackages.m32292f2de0")}</p>
+      : <button type="button" className="btn btn--ghost mt-3" onClick={() => setOpen(true)}>{_t(_locale, "ServicePackages.m6240951655")}</button>)}
     {open && <PackagePicker applicationId={applicationId} watched={packages.map((p) => p.name)} dependencies={dependencies} onClose={() => setOpen(false)} />}
   </div>;
 }
@@ -61,6 +69,7 @@ export function ServicePackages({ applicationId, packages, dependencies, scanned
 function PackagePicker({ applicationId, watched, dependencies, onClose }: {
   applicationId: string; watched: string[]; dependencies: DirectDependency[]; onClose: () => void;
 }) {
+  const _locale = _useLocale();
   const [picked, setPicked] = useState<string[]>(watched);
   const [query, setQuery] = useState("");
   const [state, action, pending] = useActionState<ActionState, FormData>(async (previous, form) => {
@@ -77,19 +86,19 @@ function PackagePicker({ applicationId, watched, dependencies, onClose }: {
   const all = dependencies.map((dependency) => dependency.name);
   const changed = picked.length !== watched.length || picked.some((n) => !watched.includes(n));
   const q = query.trim().toLowerCase();
-  const groups = [["Laufzeit", dependencies.filter((d) => !d.dev)], ["Entwicklung", dependencies.filter((d) => d.dev)]] as const;
+  const groups = [[_t(_locale, "common.runtime"), dependencies.filter((d) => !d.dev)], [_t(_locale, "common.development"), dependencies.filter((d) => d.dev)]] as const;
 
   return <div className="dependency-modal-backdrop" role="presentation" onMouseDown={() => { if (!pending) onClose(); }}>
-    <section className="dependency-modal package-modal" role="dialog" aria-modal="true" aria-label="Pakete überwachen" onMouseDown={(event) => event.stopPropagation()}>
+    <section className="dependency-modal package-modal" role="dialog" aria-modal="true" aria-label={_t(_locale, "ServicePackages.m6240951655")} onMouseDown={(event) => event.stopPropagation()}>
       <div className="dependency-modal-header">
-        <div><h2>Pakete überwachen</h2><p className="service-meta">{picked.length === 1 ? "1 ausgewählt" : `${picked.length} ausgewählt`} von {dependencies.length}</p></div>
-        <button type="button" className="icon-button" aria-label="Schließen" onClick={onClose}><Icon name="close" size={18} /></button>
+        <div><h2>{_t(_locale, "ServicePackages.m6240951655")}</h2><p className="service-meta">{picked.length === 1 ? _t(_locale, "ServicePackages.m4cac0ad6d9") : _t(_locale, "ServicePackages.mdcd08c627e", { value0: picked.length })} {_t(_locale, "ServicePackages.m24db69445a")}{dependencies.length}</p></div>
+        <button type="button" className="icon-button" aria-label={_t(_locale, "ServicePackages.mb808f6e970")} onClick={onClose}><Icon name="close" size={18} /></button>
       </div>
       <form action={action} className="grid gap-4 pt-4">
-        <label className="inventory-search"><Icon name="search" /><input type="search" aria-label="Pakete durchsuchen" placeholder="Pakete durchsuchen …" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus /></label>
+        <label className="inventory-search"><Icon name="search" /><input type="search" aria-label={_t(_locale, "ServicePackages.maf0352ec3e")} placeholder={_t(_locale, "ServicePackages.m6a7b7c7aee")} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus /></label>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn btn--ghost" disabled={pending || picked.length === all.length} onClick={() => setPicked(all)}>Alle auswählen</button>
-          <button type="button" className="btn btn--ghost" disabled={pending || !picked.length} onClick={() => setPicked([])}>Keine auswählen</button>
+          <button type="button" className="btn btn--ghost" disabled={pending || picked.length === all.length} onClick={() => setPicked(all)}>{_t(_locale, "ServicePackages.m31f0ae31d4")}</button>
+          <button type="button" className="btn btn--ghost" disabled={pending || !picked.length} onClick={() => setPicked([])}>{_t(_locale, "ServicePackages.m0fdbacc3c8")}</button>
         </div>
         {/* Auch gefilterte, aber gewählte Pakete mitschicken, sonst würde die Suche sie abwählen. */}
         {picked.filter((name) => q && !name.toLowerCase().includes(q)).map((name) => <input key={name} type="hidden" name="package" value={name} />)}
@@ -106,11 +115,11 @@ function PackagePicker({ applicationId, watched, dependencies, onClose }: {
             </li>)}</ul>
           </fieldset>;
         })}
-        {q && groups.every(([, list]) => !list.some((d) => d.name.toLowerCase().includes(q))) && <p className="service-hint">Kein Paket für diese Suche.</p>}
+        {q && groups.every(([, list]) => !list.some((d) => d.name.toLowerCase().includes(q))) && <p className="service-hint">{_t(_locale, "ServicePackages.m4f6631d650")}</p>}
         <div className="package-modal-actions">
-          <button className="btn" disabled={pending || !changed}>{pending ? "Speichere …" : "Speichern"}</button>
-          <button type="button" className="btn btn--ghost" disabled={pending} onClick={onClose}>Abbrechen</button>
-          {state.message && !state.ok && <p role="status" className="text-xs text-[var(--amber)]">{state.message}</p>}
+          <button className="btn" disabled={pending || !changed}>{pending ? _t(_locale, "ServicePackages.mb5a728f06d") : _t(_locale, "ServicePackages.mf6b2ff39f5")}</button>
+          <button type="button" className="btn btn--ghost" disabled={pending} onClick={onClose}>{_t(_locale, "ServicePackages.mf7ff1178af")}</button>
+          {state.message && !state.ok && <p role="status" className="text-xs text-[var(--amber)]">{_message(_locale, state.message)}</p>}
         </div>
       </form>
     </section>

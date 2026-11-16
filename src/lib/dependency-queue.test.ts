@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildQueue, type QueueJobInput } from "./dependency-queue";
 import { ago } from "./dependency-phase";
+import { messageCode } from "@/i18n/translate";
 
 const now = new Date("2026-11-15T12:00:00Z");
 const min = (m: number) => new Date(now.getTime() + m * 60_000);
@@ -15,6 +16,12 @@ function job(over: Partial<QueueJobInput>): QueueJobInput {
 }
 
 describe("buildQueue", () => {
+  it("decodes persisted errors and SYSTEM codes in the viewer's language", () => {
+    const failed = job({ status: "FAILED", lastError: messageCode("worker.localNodeError", { error: "MLX 500" }), messages: [{ role: "SYSTEM", content: messageCode("actions.cancelled"), createdAt: min(-1) }] });
+    const queue = buildQueue([failed], "me", now, null, "en");
+    expect(queue.recent[0].detail).toBe("Local node: MLX 500");
+    expect(queue.recent[0].latest).toBe("Cancelled.");
+  });
   it("zeigt den laufenden Job und die Schlange in der Reihenfolge des Workers", () => {
     const running = job({ status: "RUNNING", workerLockedUntil: min(2), workerAttemptAt: min(-3), messages: [{ role: "SYSTEM", content: "Ausgangslage grün: ci\nmehr", createdAt: min(-1) }] });
     const later = job({ status: "APPROVED", updatedAt: min(-2) });

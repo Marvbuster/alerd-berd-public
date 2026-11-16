@@ -26,6 +26,13 @@ beforeEach(() => {
 });
 
 describe("lokale Analyse-Node", () => {
+  it("sends the local node's completion push in the owner's language", async () => {
+    mocks.job.findUnique.mockResolvedValue({ ...job, owner: { locale: "en" } });
+    mocks.task.findFirst.mockResolvedValue({ id: "t1", jobId: "j1", phase: "ANALYSIS" });
+    mocks.job.updateMany.mockResolvedValue({ count: 1 });
+    await finishLocalTask("u1", "t1", "The dependency is safe to prepare.");
+    expect(mocks.push).toHaveBeenCalledWith("u1", expect.objectContaining({ title: "Weedscore: analysis ready" }));
+  });
   it("lehnt fremde, widerrufene oder nicht zugeordnete Keys ab", async () => {
     const req = (token: string) => new Request("https://x/api/local-node/tasks/next", { headers: { authorization: `Bearer ${token}` } });
     expect(await authenticateLocalNode(req("kein_key"))).toBeNull();

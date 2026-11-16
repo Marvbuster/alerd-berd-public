@@ -1,3 +1,4 @@
+import { translate as _t, recipientLocale } from "../../scripts/i18n.mjs";
 // Alerting-Dispatcher: bei Incident-Öffnung (DOWN) / -Auflösung (RECOVERED)
 // über alle aktiven AlertChannels benachrichtigen. Idempotent via NotificationLog
 // (@@unique([incidentId, channelId, kind])). Ohne Credentials → Dry-Run-Log.
@@ -64,17 +65,17 @@ export async function sendWebPushTo(ownerId: string, payload: { title: string; b
   await Promise.allSettled(channels.map((ch) => webpush.sendNotification(ch.config as unknown as webpush.PushSubscription, JSON.stringify(payload), { TTL: 3600 })));
 }
 
-function message(monitor: Monitor, kind: AlertEventKind) {
+function message(monitor: Monitor, kind: AlertEventKind, _locale: string = "de") {
   const target = monitor.kind === "HEALTH" ? `${monitor.target}${monitor.healthPath ?? "/health"}` : monitor.target;
   if (kind === "DOWN") {
     return {
-      subject: `🔴 ${monitor.name} ist DOWN`,
-      text: `Alerd Berd: "${monitor.name}" (${monitor.kind}) antwortet nicht.\nZiel: ${target}\nZeit: ${new Date().toISOString()}`,
+      subject: _t(_locale, "mail.md93a9f745e", { value0: monitor.name }),
+      text: _t(_locale, "mail.m2b62dfd2cc", { value0: monitor.name, value1: monitor.kind, value2: target, value3: new Date().toISOString() }),
     };
   }
   return {
-    subject: `🟢 ${monitor.name} wieder erreichbar`,
-    text: `Alerd Berd: "${monitor.name}" ist wieder UP.\nZiel: ${target}\nZeit: ${new Date().toISOString()}`,
+    subject: _t(_locale, "mail.recoveredSubject", { name: monitor.name }),
+    text: _t(_locale, "mail.m36ae958236", { value0: monitor.name, value1: target, value2: new Date().toISOString() }),
   };
 }
 
@@ -145,7 +146,8 @@ export async function ownerChannels(monitor: Pick<Monitor, "ownerId">): Promise<
 
 export async function dispatchAlert(monitor: Monitor, incident: Incident, kind: AlertEventKind) {
   const channels = await ownerChannels(monitor);
-  const { subject, text } = message(monitor, kind);
+  const owner = monitor.ownerId ? await prisma.user.findUnique({ where: { id: monitor.ownerId }, select: { locale: true } }) : null;
+  const { subject, text } = message(monitor, kind, recipientLocale(owner?.locale));
 
   for (const ch of channels) {
     const already = await prisma.notificationLog.findFirst({

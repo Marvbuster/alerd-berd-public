@@ -1,3 +1,5 @@
+import { translate as _t } from "@/i18n/translate";
+import { getLocale as _getLocale } from "next-intl/server";
 import { headers } from "next/headers";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -15,6 +17,7 @@ function fmt(d: Date): string {
 }
 
 export default async function AdminUsersPage() {
+  const _locale = await _getLocale();
   const admin = await requireAdmin();
 
   const [h, [users, invites]] = await Promise.all([
@@ -35,7 +38,7 @@ export default async function AdminUsersPage() {
     <>
 
       {/* Konten */}
-      <h2 className="mb-2 text-xs font-medium text-[var(--fg-dim)]">Konten</h2>
+      <h2 className="mb-2 text-xs font-medium text-[var(--fg-dim)]">{_t(_locale, "settings_users.mce35e3a407")}</h2>
       <div className="panel divide-y divide-[var(--fg-faint)]">
         {users.map((u) => {
           const self = u.id === admin.id;
@@ -46,14 +49,14 @@ export default async function AdminUsersPage() {
                   <div className="flex items-center gap-2">
                     <span className="tag shrink-0">{u.role}</span>
                     <span className="truncate">{u.name ? `${u.name} · ${u.email}` : u.email}</span>
-                    {!u.active && <span className="tag shrink-0">gesperrt</span>}
+                    {!u.active && <span className="tag shrink-0">{_t(_locale, "settings_users.m4a76d6a798")}</span>}
                   </div>
-                  <div className="text-xs text-[var(--fg-dim)]">{u._count.monitors} Monitore</div>
+                  <div className="text-xs text-[var(--fg-dim)]">{u._count.monitors} {_t(_locale, "settings_users.mdb6f1a9fc2")}</div>
                 </div>
                 {!self && (
                   <form action={setUserActive.bind(null, u.id, !u.active)} className="shrink-0">
                     <button type="submit" className={`btn btn--ghost ${u.active ? "!text-[var(--down)]" : "!text-[var(--up)]"}`}>
-                      {u.active ? "sperren" : "entsperren"}
+                      {u.active ? _t(_locale, "common.block") : _t(_locale, "common.unblock")}
                     </button>
                   </form>
                 )}
@@ -65,9 +68,9 @@ export default async function AdminUsersPage() {
       </div>
 
       {/* Offene Einladungen */}
-      <h2 className="mb-2 mt-8 text-xs font-medium text-[var(--fg-dim)]">Offene Einladungen</h2>
+      <h2 className="mb-2 mt-8 text-xs font-medium text-[var(--fg-dim)]">{_t(_locale, "settings_users.mf630f6b5d3")}</h2>
       {openInvites.length === 0 ? (
-        <p className="panel px-4 py-4 text-sm text-[var(--fg-dim)]">Keine offenen Einladungen.</p>
+        <p className="panel px-4 py-4 text-sm text-[var(--fg-dim)]">{_t(_locale, "settings_users.mce2677a605")}</p>
       ) : (
         <div className="panel divide-y divide-[var(--fg-faint)]">
           {openInvites.map((i) => (
@@ -77,12 +80,12 @@ export default async function AdminUsersPage() {
                   <span className="tag shrink-0">{i.role}</span>
                   <span className="truncate">{i.email}</span>
                 </div>
-                <div className="text-xs text-[var(--fg-dim)]">gültig bis {fmt(i.expiresAt)}</div>
+                <div className="text-xs text-[var(--fg-dim)]">{_t(_locale, "settings_users.mbdc18e0e79")}{fmt(i.expiresAt)}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <CopyField value={`${base}/signup?code=${i.code}`} label="link kopieren" />
+                <CopyField value={`${base}/signup?code=${i.code}`} label={_t(_locale, "settings_users.mf7ed2c34d0")} />
                 <form action={revokeInvite.bind(null, i.id)}>
-                  <button type="submit" className="btn btn--ghost !text-[var(--down)]">zurückziehen</button>
+                  <button type="submit" className="btn btn--ghost !text-[var(--down)]">{_t(_locale, "settings_users.mbbd0127f7c")}</button>
                 </form>
               </div>
             </div>

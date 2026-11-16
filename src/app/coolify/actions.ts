@@ -1,5 +1,7 @@
 "use server";
 
+import { messageCode as _code, errorMessage } from "@/i18n/translate";
+
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -13,11 +15,11 @@ export async function saveConnection(_prev: CoolifyActionState, form: FormData):
   const user = await requireUser();
   const label = String(form.get("label") ?? "").trim();
   const token = String(form.get("token") ?? "").trim();
-  if (!label) return { ok: false, message: "Der Verbindungsname wurde nicht übermittelt. Bitte im Feld Name eintragen." };
-  if (label.length > 100) return { ok: false, message: "Der Verbindungsname darf höchstens 100 Zeichen enthalten." };
-  if (!token) return { ok: false, message: "Der API-Token wurde nicht übermittelt. Bitte erneut in das Token-Feld einfügen." };
-  if (token.length > 2000) return { ok: false, message: "Der API-Token überschreitet die zulässige Länge." };
-  if (/\s/.test(token)) return { ok: false, message: "Der API-Token enthält Leerzeichen oder Zeilenumbrüche. Nur den vollständigen Token ohne Bearer-Präfix einfügen." };
+  if (!label) return { ok: false, message: _code("actions.mfa1ebfef6b") };
+  if (label.length > 100) return { ok: false, message: _code("actions.md345888258") };
+  if (!token) return { ok: false, message: _code("actions.mfff929ae86") };
+  if (token.length > 2000) return { ok: false, message: _code("actions.m68e4447a48") };
+  if (/\s/.test(token)) return { ok: false, message: _code("actions.maedfe36aa4") };
   let baseUrl: string;
   let tokenEncrypted: string;
   try {
@@ -25,7 +27,7 @@ export async function saveConnection(_prev: CoolifyActionState, form: FormData):
     tokenEncrypted = encryptCredential(token, `${user.id}:${baseUrl}`);
     await fetchCoolifyApplications(baseUrl, token);
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Verbindung konnte nicht geprüft werden." };
+    return { ok: false, message: errorMessage(error, _code("actions.m6423a56be0")) };
   }
   const connection = await prisma.coolifyConnection.upsert({
     where: { ownerId_baseUrl: { ownerId: user.id, baseUrl } },
@@ -51,7 +53,7 @@ export async function linkMonitor(applicationId: string, _prev: CoolifyActionSta
     prisma.coolifyApplication.findFirst({ where: { id: applicationId, missingSince: null, hiddenAt: null, connection: { ownerId: user.id } }, select: { id: true } }),
     prisma.monitor.findFirst({ where: { id: monitorId, ownerId: user.id }, select: { id: true } }),
   ]);
-  if (!app || !monitor) return { ok: false, message: "Eigene App und eigenen Monitor auswählen." };
+  if (!app || !monitor) return { ok: false, message: _code("actions.m82b148c435") };
   await prisma.monitorCoolifyApplication.upsert({
     where: { monitorId_applicationId: { monitorId, applicationId } },
     create: { monitorId, applicationId }, update: {},
@@ -60,7 +62,7 @@ export async function linkMonitor(applicationId: string, _prev: CoolifyActionSta
   revalidatePath("/versions");
   revalidatePath("/");
   revalidatePath(`/monitors/${monitorId}`);
-  return { ok: true, message: "Monitor verknüpft." };
+  return { ok: true, message: _code("actions.m20d3326cfe") };
 }
 
 export async function unlinkMonitor(applicationId: string, monitorId: string) {
@@ -76,15 +78,15 @@ export async function unlinkMonitor(applicationId: string, monitorId: string) {
 
 export async function setApplicationHidden(applicationId: string, hidden: boolean, _prev: CoolifyActionState, _form: FormData): Promise<CoolifyActionState> {
   const user = await requireUser();
-  if (typeof hidden !== "boolean") return { ok: false, message: "Ungültige Inventar-Aktion." };
+  if (typeof hidden !== "boolean") return { ok: false, message: _code("actions.m5c657fdcd1") };
   const result = await prisma.coolifyApplication.updateMany({
     where: { id: applicationId, connection: { ownerId: user.id } },
     data: { hiddenAt: hidden ? new Date() : null },
   });
-  if (!result.count) return { ok: false, message: "Eigene Coolify-App auswählen." };
+  if (!result.count) return { ok: false, message: _code("actions.md305398a11") };
   revalidatePath("/coolify"); revalidatePath("/services"); revalidatePath("/settings", "layout");
   revalidatePath("/versions");
-  return { ok: true, message: hidden ? "App ausgeblendet." : "App wieder eingeblendet." };
+  return { ok: true, message: _code(hidden ? "actions.appHidden" : "actions.appShown") };
 }
 
 export async function deleteConnection(id: string) {

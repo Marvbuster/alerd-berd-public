@@ -6,6 +6,7 @@
       "package": "typescript",
       "major": 7,
       "title": "Nativer Compiler, Typecheck und Builds etwa 10× schneller",
+      "titleEn": "Native compiler, with typechecks and builds about 10× faster",
       "source": "https://devblogs.microsoft.com/typescript/typescript-native-port/",
       "issues": {
         "repo": "microsoft/TypeScript",
@@ -17,6 +18,7 @@
       "package": "zod",
       "major": 4,
       "title": "Parsing 6,5× bis 14× schneller, 100× weniger tsc-Instanziierungen",
+      "titleEn": "Parsing 6.5× to 14× faster, with 100× fewer tsc instantiations",
       "source": "https://zod.dev/v4",
       "issues": {
         "repo": "colinhacks/zod",
@@ -28,6 +30,7 @@
       "package": "tailwindcss",
       "major": 4,
       "title": "Neue Engine, volle Builds bis 5×, inkrementelle über 100× schneller",
+      "titleEn": "New engine: full builds up to 5× faster, incremental builds over 100× faster",
       "source": "https://tailwindcss.com/blog/tailwindcss-v4",
       "issues": {
         "repo": "tailwindlabs/tailwindcss",
@@ -39,6 +42,7 @@
       "package": "vite",
       "major": 8,
       "title": "Rolldown statt Rollup, Builds 10× bis 30× schneller",
+      "titleEn": "Rolldown replaces Rollup, with builds 10× to 30× faster",
       "source": "https://vite.dev/blog/announcing-vite8",
       "issues": {
         "repo": "vitejs/vite",
@@ -50,6 +54,7 @@
       "package": "@prisma/client",
       "major": 7,
       "title": "Client ohne Rust-Engine, Queries 3× schneller, 90 % kleineres Bundle",
+      "titleEn": "Rust-free client, queries 3× faster, 90% smaller bundle",
       "source": "https://www.prisma.io/blog/announcing-prisma-orm-7-0-0",
       "issues": {
         "repo": "prisma/orm",
@@ -61,6 +66,7 @@
       "package": "prisma",
       "major": 7,
       "title": "Gehört zu @prisma/client 7: Queries 3× schneller, 90 % kleineres Bundle",
+      "titleEn": "Paired with @prisma/client 7: queries 3× faster, 90% smaller bundle",
       "source": "https://www.prisma.io/blog/announcing-prisma-orm-7-0-0",
       "issues": {
         "repo": "prisma/orm",

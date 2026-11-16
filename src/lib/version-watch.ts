@@ -5,6 +5,7 @@
 // Logik in version-watch-logic.ts.
 
 import semver from "semver";
+import { recipientLocale, translate } from "../../scripts/i18n.mjs";
 import { prisma } from "./prisma";
 import recommendedMajorsData from "@/data/recommended-majors.json";
 import type { RecommendedMajor } from "./dependency-target";
@@ -366,13 +367,12 @@ export async function alertCriticalAdvisories(ownerId?: string) {
     if (!critical.length) continue;
 
     const channels = await ownerChannels(row.monitor);
+    const owner = row.monitor.ownerId ? await prisma.user.findUnique({ where: { id: row.monitor.ownerId }, select: { locale: true } }) : null;
+    const locale = recipientLocale(owner?.locale);
     for (const f of critical) {
-      const subject = `🔴 ${row.monitor.name}: ${row.name} ${row.version} von ${f.ghsaId} betroffen (critical)`;
-      const text =
-        `Alerd Berd Versionswächter: "${row.monitor.name}" läuft live mit ${row.name} ${row.version}.\n` +
-        `Advisory: ${f.ghsaId} (critical): ${f.title}\n` +
-        (f.fixedIn ? `Gefixt ab: ${f.fixedIn}\n` : "") +
-        `Details: ${f.url}\nZeit: ${new Date().toISOString()}`;
+      const values = { service: row.monitor.name, package: row.name, version: row.version, advisory: f.ghsaId ?? "?", title: f.title, fix: f.fixedIn ? translate(locale, "mail.advisoryFixed", { version: f.fixedIn }) : "", url: f.url ?? "", time: new Date().toISOString() };
+      const subject = translate(locale, "mail.advisorySubject", values);
+      const text = translate(locale, "mail.advisoryBody", values);
 
       for (const ch of channels) {
         const key = { monitorId: row.monitorId, ghsaId: f.ghsaId as string, channelId: ch.id };

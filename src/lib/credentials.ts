@@ -1,8 +1,9 @@
+import { messageCode as _code, MessageError as _Error } from "@/i18n/translate";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 function key(): Buffer {
   const raw = process.env.CREDENTIAL_ENCRYPTION_KEY ?? "";
-  if (!/^[a-f0-9]{64}$/i.test(raw)) throw new Error("CREDENTIAL_ENCRYPTION_KEY muss 64 Hex-Zeichen enthalten.");
+  if (!/^[a-f0-9]{64}$/i.test(raw)) throw new _Error("validation.m43b09e8bca");
   return Buffer.from(raw, "hex");
 }
 
@@ -28,6 +29,6 @@ export function decryptCredential(value: string, context: string): string {
     decipher.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
   } catch {
-    throw new Error("Zugangsdaten können nicht entschlüsselt werden. Schlüssel prüfen oder Token erneut hinterlegen.");
+    throw new _Error("validation.mc9966f3250");
   }
 }

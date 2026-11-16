@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
+import { render } from "@/test/render";
 import { afterEach, expect, it, vi } from "vitest";
 import { RepositoryComparison, type RepositoryComparisonProps } from "./RepositoryComparison";
 

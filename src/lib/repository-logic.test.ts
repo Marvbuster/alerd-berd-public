@@ -1,3 +1,4 @@
+import { german } from "@/test/messages";
 import { describe, expect, it } from "vitest";
 import { githubRepository, repositoryBranch, repositoryFile, parseNpmManifest, parseNpmNext, compareRuntime } from "./repository-logic";
 
@@ -59,7 +60,7 @@ describe("runtime comparison", () => {
   it("distinguishes version equality from an unproven deployment cause", () => {
     expect(compareRuntime(input(), now).level).toBe("match");
     const result = compareRuntime({ ...input(), runtime: { version: "16.4.5", reportedAt: now } }, now);
-    expect(result.level).toBe("mismatch"); expect(result.reason).toContain("nicht verifiziert");
+    expect(result.level).toBe("mismatch"); expect(german(result.reason)).toContain("nicht verifiziert");
   });
   it("never reports fresh equality from absent, failed, stale or disabled observations", () => {
     for (const overrides of [

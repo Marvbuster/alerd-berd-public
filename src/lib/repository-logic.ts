@@ -1,3 +1,4 @@
+import { messageCode as _code, MessageError as _Error } from "@/i18n/translate";
 import semver from "semver";
 
 export function githubRepository(input: string): string {
@@ -5,28 +6,28 @@ export function githubRepository(input: string): string {
   if (value.startsWith("git@github.com:")) value = value.slice(15);
   else if (value.startsWith("https://")) {
     const url = new URL(value);
-    if (url.hostname !== "github.com" || url.port || url.username || url.password || url.search || url.hash) throw new Error("Nur GitHub-Repositories ohne Zugangsdaten sind unterstützt.");
+    if (url.hostname !== "github.com" || url.port || url.username || url.password || url.search || url.hash) throw new _Error("validation.m9b7f218818");
     value = url.pathname.slice(1);
   }
   value = value.replace(/\.git$/, "");
-  if (!/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/i.test(value) || [".", ".."].includes(value.split("/")[1])) throw new Error("Repository als owner/repo oder GitHub-URL angeben.");
+  if (!/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/i.test(value) || [".", ".."].includes(value.split("/")[1])) throw new _Error("validation.me3f3830082");
   return value;
 }
 
 export function repositoryBranch(input: string): string {
   const value = input.trim();
-  if (!value || value.length > 200 || /[\s\\~^:?*\[\]\x00-\x1f]/.test(value) || value.includes("..") || value.includes("@{") || value.split("/").some((p) => !p || p.startsWith(".") || p.endsWith(".lock") || p.endsWith("."))) throw new Error("Ungültiger Git-Branch.");
+  if (!value || value.length > 200 || /[\s\\~^:?*\[\]\x00-\x1f]/.test(value) || value.includes("..") || value.includes("@{") || value.split("/").some((p) => !p || p.startsWith(".") || p.endsWith(".lock") || p.endsWith("."))) throw new _Error("validation.ma9301ff1da");
   return value;
 }
 
 export function repositoryFile(input: string, name: "package.json" | "package-lock.json"): string {
   const value = input.trim();
-  if (value.length > 500 || /[\\\x00-\x1f]/.test(value) || value.split("/").some((p) => !p || p === "." || p === "..") || value.split("/").at(-1) !== name) throw new Error(`Repo-relativen Pfad zu ${name} ohne .. angeben.`);
+  if (value.length > 500 || /[\\\x00-\x1f]/.test(value) || value.split("/").some((p) => !p || p === "." || p === "..") || value.split("/").at(-1) !== name) throw new _Error("validation.mea2201abc5", { value0: name });
   return value;
 }
 
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Ungültiges Manifest oder Lockfile.");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new _Error("validation.m7174d29060");
   return value as Record<string, unknown>;
 }
 
@@ -39,7 +40,7 @@ function declaration(manifest: Record<string, unknown>): string | null {
     return value === undefined ? [] : [value];
   });
   if (!values.length) return null;
-  if (values.some((v) => typeof v !== "string" || !semver.validRange(v)) || new Set(values).size !== 1) throw new Error("next hat keine eindeutig unterstützte SemVer-Angabe.");
+  if (values.some((v) => typeof v !== "string" || !semver.validRange(v)) || new Set(values).size !== 1) throw new _Error("validation.m88e607312b");
   return values[0] as string;
 }
 
@@ -49,22 +50,22 @@ export function parseNpmManifest(manifestData: unknown, lockData: unknown, manif
   repositoryFile(manifestPath, "package.json"); repositoryFile(lockfilePath, "package-lock.json");
   const manifest = object(manifestData);
   const lock = object(lockData);
-  if (typeof manifest.packageManager === "string" && !manifest.packageManager.startsWith("npm@")) throw new Error("Aktuell wird nur npm mit package-lock.json unterstützt.");
-  if (lock.lockfileVersion !== 2 && lock.lockfileVersion !== 3) throw new Error("Nur npm-Lockfile-Version 2 oder 3 wird unterstützt.");
+  if (typeof manifest.packageManager === "string" && !manifest.packageManager.startsWith("npm@")) throw new _Error("validation.m6f4ec91e2a");
+  if (lock.lockfileVersion !== 2 && lock.lockfileVersion !== 3) throw new _Error("validation.me45cff542d");
   const appDir = manifestPath.slice(0, -"package.json".length);
   const lockDir = lockfilePath.slice(0, -"package-lock.json".length);
-  if (!appDir.startsWith(lockDir)) throw new Error("Das Manifest muss innerhalb der Lockfile-Wurzel liegen.");
+  if (!appDir.startsWith(lockDir)) throw new _Error("validation.mc64684c38f");
   const relative = appDir.slice(lockDir.length).replace(/\/$/, "");
   const packages = object(lock.packages);
   const lockedManifest = object(packages[relative]);
   const declared = declaration(manifest);
   const dependencies = directDependencies(manifest, packages, relative);
   if (declared === null) return { declaredVersion: null, lockedVersion: null, dependencies };
-  if (declaration(lockedManifest) !== declared) throw new Error("Manifest und Lockfile enthalten unterschiedliche next-Versionsangaben.");
+  if (declaration(lockedManifest) !== declared) throw new _Error("validation.md16e30f88c");
   const locked = lockedVersionOf(packages, relative, "next");
-  if (locked === undefined) throw new Error("next wurde im npm-Lockfile für diesen App-Pfad nicht gefunden.");
-  if (locked === null) throw new Error("Die gelockte next-Version ist nicht eindeutig auflösbar.");
-  if (!semver.satisfies(locked, declared, { includePrerelease: true })) throw new Error("Die gelockte next-Version erfüllt die Manifest-Angabe nicht.");
+  if (locked === undefined) throw new _Error("validation.ma5c6bd0608");
+  if (locked === null) throw new _Error("validation.mb7a59f8226");
+  if (!semver.satisfies(locked, declared, { includePrerelease: true })) throw new _Error("validation.me6d385c81c");
   return { declaredVersion: declared, lockedVersion: locked, dependencies };
 }
 
@@ -110,15 +111,15 @@ export function compareRuntime(input: {
   intervalSec: number;
   applicationMissing?: boolean;
 }, now = new Date()): { level: "match" | "mismatch" | "unknown"; reason: string } {
-  if (input.applicationMissing) return { level: "unknown", reason: "Coolify-App nicht mehr im API-Inventar" };
-  if (!input.snapshot) return { level: "unknown", reason: "Noch kein Git-Snapshot" };
-  if (!input.snapshot.lockedVersion) return { level: "unknown", reason: "Projekt nutzt kein next" };
-  if (input.lastError) return { level: "unknown", reason: "Letzter Git-Scan fehlgeschlagen" };
-  if (now.getTime() - input.snapshot.scannedAt.getTime() > 60 * 60_000) return { level: "unknown", reason: "Git-Snapshot älter als eine Stunde" };
-  if (!input.monitorEnabled) return { level: "unknown", reason: "Monitor pausiert" };
-  if (!input.runtime || !semver.valid(input.runtime.version)) return { level: "unknown", reason: "Keine gültige Runtime-Version" };
+  if (input.applicationMissing) return { level: "unknown", reason: _code("validation.m96c52fd1d1") };
+  if (!input.snapshot) return { level: "unknown", reason: _code("validation.ma611603c35") };
+  if (!input.snapshot.lockedVersion) return { level: "unknown", reason: _code("validation.m315e7a129b") };
+  if (input.lastError) return { level: "unknown", reason: _code("validation.m1ee421839a") };
+  if (now.getTime() - input.snapshot.scannedAt.getTime() > 60 * 60_000) return { level: "unknown", reason: _code("validation.m0d1630ebfb") };
+  if (!input.monitorEnabled) return { level: "unknown", reason: _code("validation.m331e2ba965") };
+  if (!input.runtime || !semver.valid(input.runtime.version)) return { level: "unknown", reason: _code("validation.m3445871582") };
   const maxAge = Math.max(5 * 60_000, input.intervalSec * 3_000);
-  if (now.getTime() - input.runtime.reportedAt.getTime() > maxAge) return { level: "unknown", reason: "Runtime-Meldung veraltet" };
-  if (!semver.eq(input.runtime.version, input.snapshot.lockedVersion as string)) return { level: "mismatch", reason: "Git-Lockfile und Runtime unterscheiden sich; Deploy-Ursache noch nicht verifiziert" };
-  return { level: "match", reason: "Git-Lockfile und gemeldete Runtime stimmen überein" };
+  if (now.getTime() - input.runtime.reportedAt.getTime() > maxAge) return { level: "unknown", reason: _code("validation.m68b9fd54cf") };
+  if (!semver.eq(input.runtime.version, input.snapshot.lockedVersion as string)) return { level: "mismatch", reason: _code("validation.m6eace9f50b") };
+  return { level: "match", reason: _code("validation.m29d9eb6240") };
 }

@@ -1,3 +1,5 @@
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
 import { createMonitor } from "@/lib/actions";
 import { MonitorForm } from "@/components/MonitorForm";
 import { PageHeader } from "@/components/PageHeader";
@@ -5,43 +7,35 @@ import { PageHeader } from "@/components/PageHeader";
 export const dynamic = "force-dynamic";
 
 export default function NewMonitor() {
+  const _locale = _useLocale();
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-7">
-      <PageHeader title="Neuer Monitor" description="Einen Dienst mit Alerd im Blick behalten." icon="monitor" />
+      <PageHeader title={_t(_locale, "monitors_new.macc33da8c0")} description={_t(_locale, "monitors_new.m3b6d6157fa")} icon="monitor" />
 
       <details className="panel mb-6 p-4" open>
         <summary className="cursor-pointer text-xs font-medium text-[var(--fg-dim)]">
-          Kurzanleitung
-        </summary>
+          {_t(_locale, "monitors_new.m0303e1896c")}</summary>
         <div className="mt-3 space-y-2 text-sm text-[var(--fg-dim)]">
           <p>
-            Wähl zuerst die <span className="text-[var(--fg)]">Art</span>, danach passen sich die
-            Felder darunter an. Was welche Art prüft, steht jeweils als Hinweis unter der Auswahl.
-          </p>
+            {_t(_locale, "monitors_new.ma63f8adf5a")}<span className="text-[var(--fg)]">{_t(_locale, "monitors_new.m75df3579c7")}</span>{_t(_locale, "monitors_new.m2edb5af642")}</p>
           <ul className="space-y-1.5 border-l border-[var(--fg-faint)] pl-4">
-            <li><span className="text-[var(--fg)]">name</span> — wie der Monitor im Board heißt, frei wählbar.</li>
-            <li><span className="text-[var(--fg)]">ziel</span> — je nach Art eine volle URL oder <code>host:port</code>.</li>
-            <li><span className="text-[var(--fg)]">HEALTH</span> — zusätzlich der tiefe Health-Pfad (die Spec-Route, nicht die flache <code>/api/health</code>). Der Bearer-Token wird dir generiert: kopieren, in deiner App als erwarteten Token ablegen, Alerd sendet genau den beim Pollen. Offene Route: Feld leeren. Die beiden ms-Schwellen sind optionale Fallbacks, wenn der Dienst keine eigenen mitliefert.</li>
-            <li><span className="text-[var(--fg)]">intervall / timeout</span> — wie oft geprüft wird und wie lange Alerd auf Antwort wartet.</li>
-            <li><span className="text-[var(--fg)]">PUSH</span> — wird nicht gepollt; die Ingest-URL zum Eintragen (z. B. in Coolify) erscheint nach dem Speichern auf der Detailseite.</li>
-            <li><span className="text-[var(--fg)]">aktiv</span> — an, damit der Monitor gepollt wird bzw. Events annimmt.</li>
+            <li><span className="text-[var(--fg)]">{_t(_locale, "monitors_new.m82a3537ff0")}</span> {_t(_locale, "monitors_new.m740a91d3a6")}</li>
+            <li><span className="text-[var(--fg)]">{_t(_locale, "monitors_new.m200b00229f")}</span> {_t(_locale, "monitors_new.m045bea9fad")}<code>{_t(_locale, "monitors_new.m132c03619c")}</code>.</li>
+            <li><span className="text-[var(--fg)]">{_t(_locale, "monitors_new.me5b73ae3b9")}</span> {_t(_locale, "monitors_new.m1a3c02953f")}<code>{_t(_locale, "monitors_new.m7ab8483165")}</code>{_t(_locale, "monitors_new.me13981296b")}</li>
+            <li><span className="text-[var(--fg)]">{_t(_locale, "monitors_new.mbce0fec3c1")}</span> {_t(_locale, "monitors_new.mf9207ed511")}</li>
+            <li><span className="text-[var(--fg)]">{_t(_locale, "monitors_new.m792aac6770")}</span> {_t(_locale, "monitors_new.m286c111f9a")}</li>
+            <li><span className="text-[var(--fg)]">{_t(_locale, "monitors_new.m3139fcc40f")}</span> {_t(_locale, "monitors_new.mc53f3ed13f")}</li>
           </ul>
           <p>
-            Alarm-Kanäle (E-Mail, Web-Push) stellst du einmalig unter{" "}
-            <a href="/settings" className="text-[var(--up)] underline">Einstellungen</a> ein, nicht pro Monitor.
-          </p>
+            {_t(_locale, "monitors_new.m8d54696d44")}{" "}
+            <a href="/settings" className="text-[var(--up)] underline">{_t(_locale, "monitors_new.mf5750a5d72")}</a> {_t(_locale, "monitors_new.md536b49280")}</p>
           <p>
-            Soll ein eigener Dienst per <span className="text-[var(--fg)]">HEALTH</span> überwacht werden,
-            muss er den Alerd-Health-Contract liefern. Die Anleitung dafür steht in{" "}
-            <a href="/llms.txt" className="text-[var(--up)] underline">llms.txt</a>: die gibst du zusammen
-            mit deinem API-Key (aus <a href="/settings/keys" className="text-[var(--up)] underline">Keys</a>) einem
-            Coding-Agent, der baut dir die <code>/health</code>-Route, danach trägst du sie hier als
-            Monitor ein.
-          </p>
+            {_t(_locale, "monitors_new.mddc7e59892")}<span className="text-[var(--fg)]">{_t(_locale, "monitors_new.me5b73ae3b9")}</span> {_t(_locale, "monitors_new.m39b484ce69")}{" "}
+            <a href="/llms.txt" className="text-[var(--up)] underline">{_t(_locale, "monitors_new.mf43a9e2f7d")}</a>{_t(_locale, "monitors_new.mb80e1c70a4")}<a href="/settings/keys" className="text-[var(--up)] underline">{_t(_locale, "monitors_new.mf0d66a79c1")}</a>{_t(_locale, "monitors_new.mbed5a9fc8f")}<code>{_t(_locale, "monitors_new.m0587c50e30")}</code>{_t(_locale, "monitors_new.m224e8b467b")}</p>
         </div>
       </details>
 
-      <div className="panel p-5 sm:p-7"><MonitorForm action={createMonitor} submitLabel="Monitor anlegen" /></div>
+      <div className="panel p-5 sm:p-7"><MonitorForm action={createMonitor} submitLabel={_t(_locale, "monitors_new.mdd08c268b6")} /></div>
     </main>
   );
 }

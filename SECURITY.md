@@ -6,7 +6,7 @@ If that option is unavailable, ask for a private reporting channel in an issue
 without including exploit details, credentials or personal information.
 The repository administrator must enable private vulnerability reporting before release.
 
-Die Oberfläche ist derzeit nur auf Deutsch verfügbar.
+The interface and notifications support English and German.
 
 ## Dependency worker isolation
 

@@ -7,6 +7,15 @@ vi.mock("@/lib/alert", () => ({ sendToChannel: mocks.send }));
 import { groupDigest, htmlDigest, sendDueDailyUpdateDigests } from "./daily-update-digest";
 
 const morning = new Date("2026-11-13T08:30:00Z"); // 09:30 in Berlin
+it("renders the English report, including summary, security badge and language", () => {
+  const html = htmlDigest([{ service: "Example", packages: [{ name: "next", from: "16.4.5", to: "16.4.6", security: true }] }], morning, "en");
+  expect(html).toContain('lang="en"');
+  expect(html).toContain("Your updates for");
+  expect(html).toContain("1 package in 1 service");
+  expect(html).toContain("Security");
+  expect(html).toContain("Open services");
+  expect(html).not.toContain("Deine Updates");
+});
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.users.mockResolvedValue([{ id: "u1", channels: [{ id: "c1" }] }]);

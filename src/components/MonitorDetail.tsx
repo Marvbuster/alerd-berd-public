@@ -1,18 +1,25 @@
 "use client";
 
+import { intlLocale } from "@/i18n/locale";
+
+import { localizedTitle } from "@/i18n/data";
+
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
+
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { type VizNode, type HistoryPoint, STATUS_COLOR, STATUS_LABEL, historyPointKind, WATCH_COLOR, WATCH_LABEL, healthColor, liveUptimeMs, metricSeverity } from "@/lib/viz";
+import { type VizNode, type HistoryPoint, STATUS_COLOR, localizedSTATUS_LABEL as STATUS_LABEL, historyPointKind, WATCH_COLOR, localizedWATCH_LABEL as WATCH_LABEL, healthColor, liveUptimeMs, metricSeverity } from "@/lib/viz";
 
-function fmtDur(ms: number | null): string {
+function fmtDur(ms: number | null, _locale: string = "de"): string {
   if (ms == null) return "—";
   const s = Math.max(0, ms / 1000);
   if (s < 60) return `${Math.floor(s)}s`;
   const m = s / 60;
   if (m < 60) return `${Math.floor(m)}m`;
   const h = m / 60;
-  if (h < 24) return `${Math.floor(h)}h ${Math.floor(m % 60)}m`;
-  return `${Math.floor(h / 24)}d ${Math.floor(h % 24)}h`;
+  if (h < 24) return _t(_locale, "MonitorDetail.m8f29caf41b", { value0: Math.floor(h), value1: Math.floor(m % 60) });
+  return _t(_locale, "MonitorDetail.m4e62faea22", { value0: Math.floor(h / 24), value1: Math.floor(h % 24) });
 }
 
 // Label-Abstand für die Zeitachse: ~10 Ticks-Fenster → schöner Zeitschritt.
@@ -25,15 +32,15 @@ function pickLabelStepSec(spanSec: number): number {
 }
 
 // „vor X" kompakt für Achsen-Labels (Vielfache der Zeitschritte → meist ganzzahlig).
-function fmtAgo(sec: number): string {
-  if (sec <= 0) return "jetzt";
+function fmtAgo(sec: number, _locale = "de"): string {
+  if (sec <= 0) return _t(_locale, "common.now");
   if (sec < 3600) return `${Math.round(sec / 60)}m`;
   if (sec < 86400) {
     const h = sec / 3600;
-    return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
+    return Number.isInteger(h) ? `${h}h` : `${h.toLocaleString(intlLocale(_locale), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h`;
   }
   const d = sec / 86400;
-  return Number.isInteger(d) ? `${d}d` : `${d.toFixed(1)}d`;
+  return Number.isInteger(d) ? `${d}d` : `${d.toLocaleString(intlLocale(_locale), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}d`;
 }
 
 // Runde einen Wert auf eine „schöne" 1/2/5-Obergrenze auf (für die Y-Achse).
@@ -46,6 +53,7 @@ function niceCeil(v: number): number {
 }
 
 function Graph({ points, color, max }: { points: HistoryPoint[]; color: string; max: number }) {
+  const _locale = _useLocale();
   const W = 900, H = 200, pad = 6;
   const tMin = points[0].t;
   const tMax = points[points.length - 1].t;
@@ -89,7 +97,7 @@ function Graph({ points, color, max }: { points: HistoryPoint[]; color: string; 
   const tickStepSec = Math.max(1, Math.round(labelStepSec / 5));
   const ticks: { t: number; label: string | null }[] = [];
   for (let s = 0; s <= spanSec + 0.5; s += tickStepSec) {
-    ticks.push({ t: tMax - s * 1000, label: Math.round(s) % labelStepSec === 0 ? fmtAgo(s) : null });
+    ticks.push({ t: tMax - s * 1000, label: Math.round(s) % labelStepSec === 0 ? fmtAgo(s, _locale) : null });
   }
 
   const [hover, setHover] = useState<number | null>(null);
@@ -117,7 +125,7 @@ function Graph({ points, color, max }: { points: HistoryPoint[]; color: string; 
   const tipAbove = hoverTop > 44;
   const hoverColor = !hp ? color : hpKind === "outage" ? "var(--down)" : hpKind === "event" ? STATUS_COLOR[hp.status ?? "UNKNOWN"] : color;
   const hoverTime = hp
-    ? new Date(hp.t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    ? new Date(hp.t).toLocaleTimeString(intlLocale(_locale), { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "";
 
   return (
@@ -158,7 +166,7 @@ function Graph({ points, color, max }: { points: HistoryPoint[]; color: string; 
                 transform: `translateX(${hoverLeftPct >= 88 ? "-100%" : hoverLeftPct <= 12 ? "0" : "-50%"}) translateY(${tipAbove ? "-100%" : "0"})`,
               }}
             >
-              {hoverTime} · {hpKind === "outage" ? "Ausfall" : hpKind === "event" ? `Event · ${STATUS_LABEL[hp.status ?? "UNKNOWN"]}` : `${hp.ms} ms`}
+              {hoverTime} · {hpKind === "outage" ? _t(_locale, "common.outage") : hpKind === "event" ? _t(_locale, "MonitorDetail.m65313d3c62", { value0: STATUS_LABEL(_locale)[hp.status ?? "UNKNOWN"] }) : _t(_locale, "MonitorDetail.m33f3d582fe", { value0: hp.ms })}
             </div>
           </>
         )}
@@ -214,6 +222,7 @@ export function MonitorDetail({
   footerActions?: ReactNode;
   live?: boolean; // false: Parent liefert Updates (z.B. Sphere via All-Nodes-Stream)
 }) {
+  const _locale = _useLocale();
   // Live: Erst-Daten vom Server, dann per SSE aktualisiert (neuer Check → Push).
   const [node, setNode] = useState(initial);
   useEffect(() => setNode(initial), [initial]); // Prop-Update (Monitorwechsel/Parent) → übernehmen
@@ -252,10 +261,10 @@ export function MonitorDetail({
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold leading-tight break-words [overflow-wrap:anywhere] sm:text-3xl">{node.label}</h1>
             <div className="mt-1 text-xs text-[var(--fg-dim)]">
-              {liveUptimeMs(node, now) != null && <>Laufzeit {fmtDur(liveUptimeMs(node, now))} · </>}
-              Status seit {fmtDur(node.stateSinceMs != null ? now - node.stateSinceMs : null)} · letzter check{" "}
-              {node.lastCheckedMs != null ? `vor ${fmtDur(now - node.lastCheckedMs)}` : "—"}
-              {node.version && <> · v{node.version}</>}
+              {liveUptimeMs(node, now) != null && <>{_t(_locale, "MonitorDetail.mfc5403a45f")}{fmtDur(liveUptimeMs(node, now), _locale)} · </>}
+              {_t(_locale, "MonitorDetail.mee573bfff4")}{fmtDur(node.stateSinceMs != null ? now - node.stateSinceMs : null, _locale)} {_t(_locale, "MonitorDetail.m5658e78370")}{" "}
+              {node.lastCheckedMs != null ? _t(_locale, "MonitorDetail.ma4c2973d4a", { value0: fmtDur(now - node.lastCheckedMs, _locale) }) : "—"}
+              {node.version && <> {_t(_locale, "MonitorDetail.m63e470a096")}{node.version}</>}
             </div>
           </div>
         </div>
@@ -265,43 +274,42 @@ export function MonitorDetail({
             className="rounded px-2.5 py-1 text-xs font-medium"
             style={{ color, border: `1px solid ${color}` }}
           >
-            {STATUS_LABEL[node.status]}
+            {STATUS_LABEL(_locale)[node.status]}
           </span>
         </div>
       </div>
 
       {/* Kennzahlen */}
       <div className="mb-5 rounded-xl border border-cyan-300/20 bg-cyan-300/[0.04] p-4">
-        <div className="mb-2 text-xs uppercase tracking-widest text-cyan-200">Coolify-Verknüpfung</div>
-        {node.coolifyApps.length ? <div className="flex flex-wrap gap-2">{node.coolifyApps.map((app) => <Link key={app.id} href={`/services#app-${app.id}`} className="connection-badge connection-badge--linked">↔ {app.name} · {app.missing ? "nicht mehr in Coolify" : app.connectionLabel}</Link>)}</div> : <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400"><span>Noch keine Coolify-App verknüpft.</span><Link href={`/services#mon-${node.id}`}>In den Diensten zuordnen ↗</Link></div>}
+        <div className="mb-2 text-xs uppercase tracking-widest text-cyan-200">{_t(_locale, "MonitorDetail.me0df3f010e")}</div>
+        {node.coolifyApps.length ? <div className="flex flex-wrap gap-2">{node.coolifyApps.map((app) => <Link key={app.id} href={`/services#app-${app.id}`} className="connection-badge connection-badge--linked">↔ {app.name} · {app.missing ? _t(_locale, "MonitorDetail.mdffddcba6d") : app.connectionLabel}</Link>)}</div> : <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400"><span>{_t(_locale, "MonitorDetail.mc244ef9563")}</span><Link href={`/services#mon-${node.id}`}>{_t(_locale, "MonitorDetail.ma2e974eeb6")}</Link></div>}
       </div>
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat k="Antwortzeit" v={node.responseMs != null ? `${node.responseMs} ms` : "—"} />
-        <Stat k="Intervall" v={`${node.intervalSec}s`} />
+        <Stat k={_t(_locale, "common.responseTime")} v={node.responseMs != null ? `${node.responseMs} ms` : "—"} />
+        <Stat k={_t(_locale, "common.interval")} v={`${node.intervalSec}s`} />
         {node.status !== "UP" ? (
-          <Stat k="letzter OK" v={node.lastUpMs != null ? `vor ${fmtDur(now - node.lastUpMs)}` : "—"} color={STATUS_COLOR.UP} />
+          <Stat k={_t(_locale, "common.lastOk")} v={node.lastUpMs != null ? _t(_locale, "MonitorDetail.ma4c2973d4a", { value0: fmtDur(now - node.lastUpMs, _locale) }) : "—"} color={STATUS_COLOR.UP} />
         ) : (
-          <Stat k="Zustand" v="stabil" color={STATUS_COLOR.UP} />
+          <Stat k={_t(_locale, "common.state")} v={_t(_locale, "common.stable")} color={STATUS_COLOR.UP} />
         )}
-        <Stat k="aktiv" v={node.enabled ? "ja" : "pausiert"} />
+        <Stat k={_t(_locale, "common.active")} v={node.enabled ? _t(_locale, "common.yes") : _t(_locale, "common.paused")} />
       </div>
 
       {/* Antwortzeit-Verlauf */}
       <div className="mb-5">
         <div className="mb-2 flex items-baseline justify-between">
-          <span className="text-[10px] font-medium text-[var(--fg)]">Antwortzeit-Verlauf</span>
-          <span className="text-[10px] text-[var(--fg-dim)]">letzte {data.length} {pushOnly ? "Events" : "Checks"}</span>
+          <span className="text-[10px] font-medium text-[var(--fg)]">{_t(_locale, "MonitorDetail.m6daa700674")}</span>
+          <span className="text-[10px] text-[var(--fg-dim)]">{_t(_locale, "MonitorDetail.mcd79cc95ad")}{data.length} {pushOnly ? "Events" : "Checks"}</span>
         </div>
         {pushOnly ? (
           <div className="grid h-[120px] place-items-center rounded-md border border-dashed border-[var(--fg-faint)] px-4 text-center text-xs text-[var(--fg-dim)]">
-            Push misst keine Antwortzeit, die Quelle meldet nur Events. Für eine Kurve leg zusätzlich einen Erreichbarkeits-Monitor an.
-          </div>
+            {_t(_locale, "MonitorDetail.m5f0e8993e6")}</div>
         ) : hasGraph ? (
           <div className="flex gap-2">
             {/* Y-Achse: Antwortzeit in ms */}
             <div className="flex h-[200px] flex-col justify-between py-[5px] text-right text-[9px] tabular-nums text-[var(--fg-dim)]">
-              <span>{axisMax} ms</span>
-              <span>{Math.round(axisMax / 2)} ms</span>
+              <span>{axisMax} {_t(_locale, "MonitorDetail.m20249a0dcc")}</span>
+              <span>{Math.round(axisMax / 2)} {_t(_locale, "MonitorDetail.m20249a0dcc")}</span>
               <span>0</span>
             </div>
             <div className="min-w-0 flex-1">
@@ -310,15 +318,14 @@ export function MonitorDetail({
           </div>
         ) : (
           <div className="grid h-[200px] place-items-center rounded-md border border-dashed border-[var(--fg-faint)] text-xs text-[var(--fg-dim)]">
-            noch keine Messdaten — warte auf die ersten Checks
-          </div>
+            {_t(_locale, "MonitorDetail.m49275cf643")}</div>
         )}
       </div>
 
       {/* Komponenten (aus dem letzten Spec-Health-Payload) */}
       {node.components.length > 0 && (
         <div className="mb-5">
-          <div className="mb-2 text-[10px] font-medium text-[var(--fg)]">Komponenten</div>
+          <div className="mb-2 text-[10px] font-medium text-[var(--fg)]">{_t(_locale, "MonitorDetail.m8934293b94")}</div>
           <div className="grid gap-1.5">
             {node.components.map((c) => {
               const cc = healthColor(c.status);
@@ -343,7 +350,7 @@ export function MonitorDetail({
       {/* Metriken (aus dem letzten Spec-Health-Payload) */}
       {node.metrics.length > 0 && (
         <div className="mb-5">
-          <div className="mb-2 text-[10px] font-medium text-[var(--fg)]">Metriken</div>
+          <div className="mb-2 text-[10px] font-medium text-[var(--fg)]">{_t(_locale, "MonitorDetail.mef5189cc1f")}</div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             {node.metrics.map((m) => {
               const sev = metricSeverity(m);
@@ -356,7 +363,7 @@ export function MonitorDetail({
                 >
                   <div className="min-w-0 break-words [overflow-wrap:anywhere] font-mono text-[11px] text-[var(--fg-dim)] sm:mb-1">{m.name}</div>
                   <div className="shrink-0 text-lg" style={mc ? { color: mc } : undefined}>
-                    {m.value.toLocaleString("de-DE")}
+                    {m.value.toLocaleString(intlLocale(_locale))}
                     {m.unit ? ` ${m.unit}` : ""}
                   </div>
                 </div>
@@ -369,7 +376,7 @@ export function MonitorDetail({
       {/* Versionswächter (live gemeldete Pakete aus runtime.packages) */}
       {node.packages.length > 0 && (
         <div className="mb-5">
-          <div className="mb-2 text-[10px] font-medium text-[var(--fg)]">Versionen</div>
+          <div className="mb-2 text-[10px] font-medium text-[var(--fg)]">{_t(_locale, "MonitorDetail.med902d245f")}</div>
           <div className="grid gap-1.5">
             {node.packages.map((p) => {
               const pc = WATCH_COLOR[p.level];
@@ -380,11 +387,11 @@ export function MonitorDetail({
                     <span className="shrink-0 font-mono">{p.name} {p.version ?? "?"}</span>
                     <span className="min-w-0 truncate text-xs text-[var(--fg-dim)]">
                       {p.version == null
-                        ? "Dienst meldet runtime.packages nicht"
-                        : `${p.latest ? `aktuell: ${p.latest}` : "Referenzdaten fehlen noch"}${p.sinceMs != null ? ` · läuft seit ${fmtDur(now - p.sinceMs)}` : ""}`}
+                        ? _t(_locale, "MonitorDetail.m949d8a7d33")
+                        : `${p.latest ? _t(_locale, "MonitorDetail.mc8ac4a29d8", { value0: p.latest }) : _t(_locale, "MonitorDetail.m9bd362acdb")}${p.sinceMs != null ? _t(_locale, "MonitorDetail.m9991c9b443", { value0: fmtDur(now - p.sinceMs, _locale) }) : ""}`}
                     </span>
                     <span className="ml-auto shrink-0 text-[10px] font-medium" style={{ color: pc }}>
-                      {WATCH_LABEL[p.level]}
+                      {WATCH_LABEL(_locale)[p.level]}
                     </span>
                   </div>
                   {p.findings.length > 0 && (
@@ -396,8 +403,8 @@ export function MonitorDetail({
                             {f.ghsaId && (f.url ? <a href={f.url} target="_blank" rel="noreferrer" className="underline">{f.ghsaId}</a> : f.ghsaId)}
                             {f.severity && <> ({f.severity})</>}
                             {f.ghsaId && ": "}
-                            {f.title}
-                            {f.fixedIn && <> · gefixt ab {f.fixedIn}</>}
+                            {localizedTitle(f, _locale)}
+                            {f.fixedIn && <> {_t(_locale, "MonitorDetail.mbccb769eca")}{f.fixedIn}</>}
                           </span>
                         </li>
                       ))}

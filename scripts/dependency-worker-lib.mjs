@@ -1,31 +1,41 @@
+import { translate as _t, recipientLocale, MessageError } from "./i18n.mjs";
+export function languagePrompt(value, prompt, phase = "analysis") {
+  const locale = recipientLocale(value);
+  if (locale === "de") return prompt;
+  return prompt.replaceAll("Deutsch", "Englisch")
+    .replaceAll("Risiko (sicher/prüfen/riskant)", "Risk (safe/review/risky)")
+    .replaceAll("Begründung, Quellen mit URL, Unsicherheiten", "Rationale, Sources with URLs, Uncertainties")
+    .replaceAll("Empfehlung", "Recommendation")
+    + "\n\n" + _t(locale, phase === "analysis" ? "worker.analysisLanguage" : "worker.conclusionLanguage");
+}
 // Reine Hilfsfunktionen des Dependency-Workers, ohne DB, Env oder Prozesse.
 // Getrennt von scripts/dependency-worker.mjs, damit Vitest sie prüfen kann.
 import { createHash } from "node:crypto";
 import { dirname, relative, isAbsolute } from "node:path";
 import semver from "semver";
 
-export function githubUrl(repository) {
-  if (!/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/i.test(repository)) throw new Error("Ungültiges GitHub-Repository.");
+export function githubUrl(repository, _locale = "de") {
+  if (!/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/i.test(repository)) throw new MessageError("worker.me5e8b274ef");
   return `https://github.com/${repository}.git`;
 }
 
 export function gitBranch(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._/@-]*$/.test(value) || value.includes("..") || value.endsWith("/") || value.endsWith(".")) {
-    throw new Error("Ungültiger Git-Branch.");
+    throw new MessageError("worker.invalidBranch");
   }
   return value;
 }
 
 export function commitSha(value) {
-  if (typeof value !== "string" || !/^[a-f0-9]{7,64}$/i.test(value)) throw new Error("Ungültiger Basis-Commit.");
+  if (typeof value !== "string" || !/^[a-f0-9]{7,64}$/i.test(value)) throw new MessageError("worker.invalidCommit");
   return value;
 }
 
 export function repositoryPath(value, label, filename) {
-  if (typeof value !== "string") throw new Error(`${label}-Pfad fehlt.`);
+  if (typeof value !== "string") throw new MessageError("worker.missingPath", { label });
   const path = value.replaceAll("\\", "/").replace(/^\.\//, "");
   if (!path || path.startsWith("/") || path.split("/").includes("..") || !(path === filename || path.endsWith(`/${filename}`))) {
-    throw new Error(`Ungültiger ${label}-Pfad.`);
+    throw new MessageError("worker.invalidPath", { label });
   }
   return path;
 }
@@ -39,9 +49,9 @@ export function safeWatch(watch) {
   };
 }
 
-export function packageDir(watch) {
+export function packageDir(watch, _locale = "de") {
   const manifestDir = dirname(watch.manifestPath);
-  if (dirname(watch.lockfilePath) !== manifestDir) throw new Error("Manifest und Lockfile liegen in unterschiedlichen Verzeichnissen; dieser Job benötigt eine explizite Workspace-Unterstützung.");
+  if (dirname(watch.lockfilePath) !== manifestDir) throw new MessageError("worker.med26155dee");
   return manifestDir === "." ? "" : manifestDir;
 }
 
@@ -61,9 +71,9 @@ export function jobUids(jobId) {
 
 // Ältere Jobs tragen noch eine feste Modell-ID; der Alias folgt dem jeweils
 // aktuellen Opus des Abos und bricht nicht, wenn eine ID ausläuft.
-export function modelArg(model) {
+export function modelArg(model, _locale = "de") {
   if (typeof model !== "string" || !model || model === "claude-opus-4-8") return "opus";
-  if (!/^[a-z0-9][a-z0-9.-]*$/i.test(model)) throw new Error("Ungültiges Modell.");
+  if (!/^[a-z0-9][a-z0-9.-]*$/i.test(model)) throw new MessageError("worker.m76c66d6a46");
   return model;
 }
 
@@ -72,10 +82,10 @@ export function modelArg(model) {
 // Projekt-Settings aus dem Repo; WebFetch/WebSearch müssen explizit zurück.
 export const CLAUDE_TOOLS = "Read,Glob,Grep,WebFetch,WebSearch";
 
-export function claudeArgs({ prompt, model, sessionId }) {
+export function claudeArgs({ prompt, model, sessionId }, _locale = "de") {
   const args = [
     "-p", prompt,
-    "--model", modelArg(model),
+    "--model", modelArg(model, _locale),
     "--output-format", "stream-json", "--verbose",
     "--permission-mode", "plan",
     "--restricted",
@@ -83,7 +93,7 @@ export function claudeArgs({ prompt, model, sessionId }) {
     "--allowedTools", "WebFetch,WebSearch",
   ];
   if (sessionId) {
-    if (!/^[A-Za-z0-9-]{8,80}$/.test(sessionId)) throw new Error("Ungültige Claude-Session.");
+    if (!/^[A-Za-z0-9-]{8,80}$/.test(sessionId)) throw new MessageError("worker.m636d7c3553");
     args.push("--resume", sessionId);
   }
   return args;
@@ -124,35 +134,35 @@ export function parseStream(text) {
 
 // package.json darf sich ausschließlich in der next-Version ändern, und zwar
 // genau auf die freigegebene Zielversion (optional mit ^ oder ~).
-export function validateManifestChange(beforeText, afterText, packageName, targetVersion) {
-  return validateManifestChanges(beforeText, afterText, [{ name: packageName, version: targetVersion }]);
+export function validateManifestChange(beforeText, afterText, packageName, targetVersion, _locale = "de") {
+  return validateManifestChanges(beforeText, afterText, [{ name: packageName, version: targetVersion }], _locale);
 }
 
 // Mehrere Pakete in einem Commit: Jedes freigegebene Paket muss genau auf seine
 // Zielversion springen, alles andere in package.json bleibt unverändert.
-export function validateManifestChanges(beforeText, afterText, list) {
+export function validateManifestChanges(beforeText, afterText, list, _locale = "de") {
   const before = JSON.parse(beforeText), after = JSON.parse(afterText);
   const sections = new Set(["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]);
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
     if (sections.has(key)) continue;
-    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) throw new Error(`package.json-Feld „${key}“ wurde verändert.`);
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) throw new MessageError("worker.m2a0ae2d56d", { value0: key });
   }
   const names = new Set(list.map((p) => p.name));
   const changed = new Set();
   for (const section of sections) {
     const oldRest = { ...(before[section] ?? {}) }, newRest = { ...(after[section] ?? {}) };
     for (const name of names) { delete oldRest[name]; delete newRest[name]; }
-    if (JSON.stringify(oldRest) !== JSON.stringify(newRest)) throw new Error(`Unerwartete Dependency-Änderung in ${section}.`);
+    if (JSON.stringify(oldRest) !== JSON.stringify(newRest)) throw new MessageError("worker.m81c83a4ec0", { value0: section });
     for (const { name, version } of list) {
       const oldValue = before[section]?.[name], newValue = after[section]?.[name];
       if (oldValue === newValue) continue;
       const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (typeof newValue !== "string" || !new RegExp(`^(?:\\^|~)?${escaped}$`).test(newValue)) throw new Error(`${name} wurde nicht auf die freigegebene Zielversion gesetzt.`);
+      if (typeof newValue !== "string" || !new RegExp(`^(?:\\^|~)?${escaped}$`).test(newValue)) throw new MessageError("worker.m819ed1e1c5", { value0: name });
       changed.add(name);
     }
   }
   const missing = list.filter((p) => !changed.has(p.name)).map((p) => p.name);
-  if (missing.length) throw new Error(`package.json enthält keine Änderung für ${missing.join(", ")}.`);
+  if (missing.length) throw new MessageError("worker.m08480147be", { value0: missing.join(", ") });
 }
 
 // Pakete eines Jobs: neue Jobs tragen eine Liste, alte nur packageName/targetVersion.
@@ -164,9 +174,9 @@ export function jobPackages(job) {
 }
 
 // Kurzname für Überschriften, Push und Commit: „Next 16.4.6“, „jose 6.2.4, zod 4.6.6“, „4 Pakete“.
-export function jobLabel(list) {
+export function jobLabel(list, _locale = "de") {
   const one = (p) => `${p.name === "next" ? "Next" : p.name} ${p.version}`;
-  return list.length <= 2 ? list.map(one).join(", ") : `${list.length} Pakete`;
+  return list.length <= 2 ? list.map(one).join(", ") : _t(_locale, "worker.md86d6fe8ce", { value0: list.length });
 }
 
 // Nach dem Push: Ist die Zielversion live? Grundlage sind die verknüpften
@@ -178,7 +188,7 @@ export const LIVE_TIMEOUT_MS = 30 * 60_000;
 // Zielversion so lange am Stück gemeldet wird, gilt der Deploy als gesetzt.
 export const LIVE_SETTLE_MS = 2 * 60_000;
 
-export function evaluateLive({ targetVersion, publishedAt, now, monitors, timeoutMs = LIVE_TIMEOUT_MS, settleMs = LIVE_SETTLE_MS }) {
+export function evaluateLive({ targetVersion, publishedAt, now, monitors, timeoutMs = LIVE_TIMEOUT_MS, settleMs = LIVE_SETTLE_MS }, _locale = "de") {
   const facts = monitors.filter((m) => m.enabled && m.version).map((m) => ({
     name: m.name, version: m.version, status: m.status,
     fresh: !!m.reportedAt && m.reportedAt > publishedAt,
@@ -190,14 +200,14 @@ export function evaluateLive({ targetVersion, publishedAt, now, monitors, timeou
   const settled = (f) => !f.firstSeenAt || now.getTime() - f.firstSeenAt.getTime() >= settleMs;
   if (facts.every(ok)) return facts.every(settled) ? { state: "live", facts } : { state: "waiting", facts, settling: true };
   if (now.getTime() - publishedAt.getTime() > timeoutMs) {
-    const reason = facts.filter((f) => !ok(f)).map((f) => f.version !== targetVersion ? `${f.name} meldet weiter ${f.version}` : !f.fresh ? `${f.name} hat seit dem Push nicht gemeldet` : `${f.name} ist ${f.status}`).join(", ");
-    return { state: "timeout", facts, reason: `Nach ${Math.round(timeoutMs / 60_000)} Minuten nicht live: ${reason}.` };
+    const reason = facts.filter((f) => !ok(f)).map((f) => f.version !== targetVersion ? `${f.name} meldet weiter ${f.version}` : !f.fresh ? _t(_locale, "worker.m371c40d67f", { value0: f.name }) : _t(_locale, "worker.mbcc2efb1ce", { value0: f.name, value1: f.status })).join(", ");
+    return { state: "timeout", facts, reason: _t(_locale, "worker.m72a01c2c21", { value0: Math.round(timeoutMs / 60_000), value1: reason }) };
   }
   return { state: "waiting", facts };
 }
 
-export function liveFactsText(facts, targetVersion) {
-  return facts.map((f) => `- ${f.name}: meldet ${f.version}${f.version === targetVersion ? " (Ziel)" : ""}, Status ${f.status}, ${f.incidents ? `${f.incidents} Incident(s) seit dem Push` : "keine Incidents seit dem Push"}`).join("\n");
+export function liveFactsText(facts, targetVersion, _locale = "de") {
+  return facts.map((f) => `- ${f.name}: meldet ${f.version}${f.version === targetVersion ? " (Ziel)" : ""}, Status ${f.status}, ${f.incidents ? _t(_locale, "worker.m402f684713", { value0: f.incidents }) : _t(_locale, "worker.mce46b54332")}`).join("\n");
 }
 
 // Öffentliche Liveness-Route jeder Coolify-Domain (Konvention /api/health).
@@ -218,10 +228,10 @@ export function healthUrls(domains) {
 
 // Messung des Workers für Claude: Status, relevante Header und die flachen
 // JSON-Felder der Antwort. Der Body ist untrusted und wird nur gekürzt zitiert.
-export function probeText(probes) {
-  if (!probes.length) return "- keine öffentliche Domain mit https gefunden";
+export function probeText(probes, _locale = "de") {
+  if (!probes.length) return _t(_locale, "worker.me305b346c2");
   return probes.map((p) => {
-    if (p.error) return `- GET ${p.url}: fehlgeschlagen (${p.error})`;
+    if (p.error) return _t(_locale, "worker.m7e36440466", { value0: p.url, value1: p.error });
     const fields = p.json && typeof p.json === "object" && !Array.isArray(p.json)
       ? Object.entries(p.json).filter(([, v]) => ["string", "number", "boolean"].includes(typeof v)).slice(0, 12).map(([k, v]) => `${k}=${String(v).slice(0, 80)}`).join(", ")
       : "kein JSON";
@@ -237,17 +247,17 @@ const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,99}$/;
 const BLOCKED_ENV = /^(PATH|HOME|USER|SHELL|LANG|LC_.*|CI|NO_COLOR|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED|LD_.*|DYLD_.*|NPM_CONFIG_.*|npm_config_.*|GIT_.*|SSH_.*|CLAUDE_.*|ANTHROPIC_.*|CREDENTIAL_ENCRYPTION_KEY|DEPENDENCY_.*)$/i;
 export const BUILD_ENV_MAX = 40;
 
-export function parseBuildEnv(text) {
+export function parseBuildEnv(text, _locale = "de") {
   const env = {};
   const lines = String(text ?? "").split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-  if (lines.length > BUILD_ENV_MAX) throw new Error(`Höchstens ${BUILD_ENV_MAX} Build-Variablen.`);
+  if (lines.length > BUILD_ENV_MAX) throw new MessageError("worker.m3e842d7484", { value0: BUILD_ENV_MAX });
   for (const line of lines) {
     const eq = line.indexOf("=");
     const name = (eq < 0 ? line : line.slice(0, eq)).trim();
     const value = eq < 0 ? "" : line.slice(eq + 1).trim().replace(/^(["'])(.*)\1$/, "$2");
-    if (!ENV_NAME.test(name)) throw new Error(`Ungültiger Variablenname: ${name.slice(0, 40)}`);
-    if (BLOCKED_ENV.test(name)) throw new Error(`${name} setzt Alerd selbst und ist hier nicht erlaubt.`);
-    if (value.length > 500) throw new Error(`Wert von ${name} ist zu lang.`);
+    if (!ENV_NAME.test(name)) throw new MessageError("worker.me7e4793412", { value0: name.slice(0, 40) });
+    if (BLOCKED_ENV.test(name)) throw new MessageError("worker.m143df55f9e", { value0: name });
+    if (value.length > 500) throw new MessageError("worker.mfed016a0ad", { value0: name });
     env[name] = value;
   }
   return env;
@@ -275,15 +285,15 @@ export function mergeBuildEnvNames(text, names) {
 
 // Web Push für den Update-Chat: nur wenn du dran bist oder der Ablauf endet.
 // Ein Text pro Statuswechsel, der Klick öffnet Dienst und Update-Chat.
-export function dependencyPushText(status, { appName, label }) {
+export function dependencyPushText(status, { appName, label }, _locale = "de") {
   const what = label;
   switch (status) {
-    case "READY_FOR_REVIEW": return { title: `${appName}: Analyse fertig`, body: `${what} ist analysiert, du bist dran.` };
-    case "READY_TO_PUSH": return { title: `${appName}: Update vorbereitet`, body: `${what} ist gebaut und getestet, Commit & Push warten auf dich.` };
-    case "FAILED": return { title: `${appName}: Update gescheitert`, body: `${what} ist hängen geblieben, im Update-Chat lässt sich der Schritt wiederholen.` };
-    case "DEPLOY_FAILED": return { title: `${appName}: Deploy nicht angekommen`, body: `${what} ist gepusht, aber nicht live gemeldet.` };
-    case "LIVE": return { title: `${appName}: Update ist live`, body: `${what} läuft, das Fazit steht im Update-Chat.` };
-    case "LIVE_UNVERIFIED": return { title: `${appName}: Update gepusht`, body: `${what} ist gepusht, live prüfen lässt es sich hier nicht.` };
+    case "READY_FOR_REVIEW": return { title: _t(_locale, "worker.m452f676b8e", { value0: appName }), body: _t(_locale, "worker.m440e5bb96c", { value0: what }) };
+    case "READY_TO_PUSH": return { title: _t(_locale, "worker.m7f52f86bb9", { value0: appName }), body: _t(_locale, "worker.me271acd826", { value0: what }) };
+    case "FAILED": return { title: _t(_locale, "worker.m0965e6f77d", { value0: appName }), body: _t(_locale, "worker.m1cdc61a347", { value0: what }) };
+    case "DEPLOY_FAILED": return { title: _t(_locale, "worker.m94feeaa6b6", { value0: appName }), body: _t(_locale, "worker.mdac2087851", { value0: what }) };
+    case "LIVE": return { title: _t(_locale, "worker.mae3ab00338", { value0: appName }), body: _t(_locale, "worker.m76ba73cfd7", { value0: what }) };
+    case "LIVE_UNVERIFIED": return { title: _t(_locale, "worker.m9f8652c518", { value0: appName }), body: _t(_locale, "worker.mf9b01e4d1b", { value0: what }) };
     default: return null;
   }
 }
@@ -373,23 +383,23 @@ export function typesTarget(name) {
 // Aus zwei jsDelivr-Dateilisten die Typdateien, die sich geändert haben.
 // Kleine Dateien zuerst, damit ein großes Paket wie @types/react nicht nur
 // eine riesige Datei zeigt.
-export function changedTypeFiles(fromFiles, toFiles, max = 8) {
+export function changedTypeFiles(fromFiles, toFiles, max = 8, _locale = "de") {
   const isTypes = (f) => typeof f?.name === "string" && /\.d\.[cm]?ts$/.test(f.name) && !f.name.split("/").includes("..");
   const before = new Map((fromFiles ?? []).filter(isTypes).map((f) => [f.name, f]));
   const after = new Map((toFiles ?? []).filter(isTypes).map((f) => [f.name, f]));
   const changed = [], seen = new Set();
   for (const [name, f] of after) {
     const old = before.get(name);
-    if (!old) changed.push({ name, status: "neu", size: f.size ?? 0 });
+    if (!old) changed.push({ name, status: _t(_locale, "worker.mb1688cbab7"), size: f.size ?? 0 });
     else if (old.hash !== f.hash) {
       // Gleicher Inhalt unter zwei Namen (index.d.ts und browser.d.ts) zählt einmal.
       const pair = `${old.hash}>${f.hash}`;
       if (seen.has(pair)) continue;
       seen.add(pair);
-      changed.push({ name, status: "geändert", size: Math.max(f.size ?? 0, old.size ?? 0) });
+      changed.push({ name, status: _t(_locale, "worker.m1abf4a5e17"), size: Math.max(f.size ?? 0, old.size ?? 0) });
     }
   }
-  for (const [name, f] of before) if (!after.has(name)) changed.push({ name, status: "entfernt", size: f.size ?? 0 });
+  for (const [name, f] of before) if (!after.has(name)) changed.push({ name, status: _t(_locale, "worker.m2975b1bd85"), size: f.size ?? 0 });
   return { total: changed.length, files: changed.sort((a, b) => a.size - b.size || a.name.localeCompare(b.name)).slice(0, max) };
 }
 
@@ -426,26 +436,26 @@ export function needsPrismaGenerate(pkg, existing) {
   return typeof deps.prisma === "string" && prismaSchemaPaths(pkg).some((path) => existing.has(path));
 }
 
-export function baselineHint(output, repoDir) {
+export function baselineHint(output, repoDir, _locale = "de") {
   const paths = [...new Set([...String(output).matchAll(/ENOENT: no such file or directory, (?:open|stat|scandir|lstat) '([^']+)'/g)].map((m) => m[1]))];
   const rel = (p) => relative(repoDir, p);
   const outside = paths.find((p) => { const r = rel(p); return r.startsWith("..") || isAbsolute(r); });
-  if (outside) return `Ein Test liest ${rel(outside)}, das liegt außerhalb des Repos. Alerd klont nur dieses Repo, Dateien aus Nachbar-Ordnern fehlen in der Sandbox. Im Repo den Test überspringen lassen, wenn die Datei fehlt.`;
-  if (paths.length) return `Die Datei ${rel(paths[0])} fehlt im Git-Stand, vielleicht steht sie in .gitignore oder wird lokal erzeugt.`;
-  if (/Xvfb|cypress|playwright/i.test(String(output))) return "Ein Browser-Test läuft in der Sandbox nicht, es gibt dort keinen Browser. Unit-Tests ins test-Skript, Browser-Tests in ein eigenes Skript wie test:e2e, oder alerd:test anlegen.";
-  if (/prisma generate|@prisma\/client|PrismaClient/.test(String(output))) return "Der Prisma-Client ließ sich nicht erzeugen oder fehlt. Verlangt prisma.config eine weitere Env-Variable, im Panel unter Version → Build-Variablen einen Platzhalter eintragen.";
-  return "Fehlt eine Env-Variable, im Panel unter Version → Build-Variablen einen Platzhalter eintragen.";
+  if (outside) return _t(_locale, "worker.m1f36baa9c8", { value0: rel(outside) });
+  if (paths.length) return _t(_locale, "worker.m1b9819d9c6", { value0: rel(paths[0]) });
+  if (/Xvfb|cypress|playwright/i.test(String(output))) return _t(_locale, "worker.m71d1417d91");
+  if (/prisma generate|@prisma\/client|PrismaClient/.test(String(output))) return _t(_locale, "worker.m1efaaf3ae3");
+  return _t(_locale, "worker.ma1e2bf559b");
 }
 
 // npm 10 stürzt beim Auflösen von vitest ab (Arborist-Bug „reading 'edgesOut'“).
 // npm 11 schafft es, schreibt aber ein Lockfile, das npm ci unter npm 10 ablehnt.
 // Bis npm das behebt: die betroffenen Pakete benennen, statt roh zu scheitern.
-export function npmResolveHint(message, names) {
+export function npmResolveHint(message, names, _locale = "de") {
   if (!/reading 'edgesOut'/.test(String(message))) return null;
   const vitest = names.filter((n) => n === "vitest" || n.startsWith("@vitest/"));
   return vitest.length
-    ? `npm 10 kann vitest gerade nicht auflösen (npm-Bug „edgesOut“). ${vitest.join(" und ")} abwählen und den Rest updaten.`
-    : "npm 10 ist beim Auflösen der Abhängigkeiten abgestürzt (npm-Bug „edgesOut“). Einzelne Pakete abwählen und den Rest updaten.";
+    ? _t(_locale, "worker.m0f95bd7450", { value0: vitest.join(" und ") })
+    : _t(_locale, "worker.mbe242e29b7");
 }
 
 // Kürzt Text für DB und Prompts. Ein Schnitt mitten in einem Emoji hinterlässt
@@ -516,11 +526,11 @@ export function lockstepDrift(lock, list) {
   return drift;
 }
 
-export function lockstepHint(drift) {
+export function lockstepHint(drift, _locale = "de") {
   if (!drift.length) return null;
   const parts = drift.map((d) => `${d.name} ${d.version} passt zu ${d.dep} ${d.version.replace(/\.\d+$/, ".x")}, npm nimmt aber ${d.dep} ${d.resolved}`);
   const names = [...new Set(drift.map((d) => d.name))].join(", ");
-  return `Paketfamilie läuft auseinander: ${parts.join("; ")}. Solche Pakete laufen nur versionsgleich zusammen, der Build würde mit fehlenden Exports scheitern. Passend ist die neueste Version der Major von ${names}, sonst das Paket für diesen Lauf abwählen.`;
+  return _t(_locale, "worker.m5571cee203", { value0: parts.join("; "), value1: names });
 }
 
 // Fortschritt innerhalb eines Worker-Schritts. Jede länger laufende Aktion wird
@@ -561,12 +571,12 @@ export function createProgress(save, now = () => new Date()) {
 }
 
 // Kurzer Name für einen npm-Aufruf in der Sandbox, mit Phase davor.
-export function npmStepLabel(stage, args) {
+export function npmStepLabel(stage, args, _locale = "de") {
   const clean = args.filter((a) => a !== "--ignore-scripts");
   let what;
   if (clean[0] === "ci") what = "npm ci";
   else if (clean[0] === "run") what = `npm run ${clean[1]}`;
-  else if (clean[0] === "install" && clean.includes("--package-lock-only")) what = "Lockfile aktualisieren";
+  else if (clean[0] === "install" && clean.includes("--package-lock-only")) what = _t(_locale, "worker.lockfileUpdate");
   else if (clean[0] === "exec" && clean.includes("prisma") && clean.includes("generate")) what = "prisma generate";
   else what = `npm ${clean.join(" ")}`;
   return stage ? `${stage}: ${what}` : what;

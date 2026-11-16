@@ -1,13 +1,14 @@
+import { messageCode as _code, MessageError as _Error } from "@/i18n/translate";
 // Fixed GET endpoint only. No environment, log, command, or deployment access.
 export function coolifyBaseUrl(input: string): string {
   let url: URL;
-  try { url = new URL(input); } catch { throw new Error("Ungültige Coolify-URL."); }
+  try { url = new URL(input); } catch { throw new _Error("validation.mcf7aaeb824"); }
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || !['/', '/api/v1', '/api/v1/'].includes(url.pathname)) {
-    throw new Error("Coolify-URL muss eine Origin oder /api/v1 ohne Zugangsdaten sein.");
+    throw new _Error("validation.m02bb115f7d");
   }
   // Explicit operator allowlist also supports internal Coolify origins. No redirects.
   const allowed = (process.env.COOLIFY_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (!allowed.includes(url.origin)) throw new Error("Coolify-Origin ist nicht in COOLIFY_ALLOWED_ORIGINS freigegeben.");
+  if (!allowed.includes(url.origin)) throw new _Error("validation.mba1f19f9f4");
   return `${url.origin}/api/v1`;
 }
 
@@ -51,14 +52,14 @@ function composeDomains(value: unknown): string[] {
 }
 
 export function parseCoolifyApplications(data: unknown) {
-  if (!Array.isArray(data) || data.length > 2000) throw new Error("Unerwartete Coolify-App-Liste.");
+  if (!Array.isArray(data) || data.length > 2000) throw new _Error("validation.m918cf67847");
   const seen = new Set<string>();
   return data.map((item: unknown) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Ungültiger Coolify-App-Eintrag.");
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new _Error("validation.md5dd059560");
     const row = item as Record<string, unknown>;
     const uuid = field(row.uuid, 128);
     const name = field(row.name, 200);
-    if (!uuid || !/^[a-z0-9_-]+$/i.test(uuid) || !name || seen.has(uuid)) throw new Error("Ungültige oder doppelte Coolify-App-ID.");
+    if (!uuid || !/^[a-z0-9_-]+$/i.test(uuid) || !name || seen.has(uuid)) throw new _Error("validation.m31153059c4");
     seen.add(uuid);
     const sha = field(row.git_commit_sha, 64);
     // Only explicitly selected, non-secret fields survive parsing.
@@ -83,10 +84,10 @@ async function coolifyGet(baseUrl: string, path: string, token: string): Promise
       method: "GET", headers: { authorization: `Bearer ${token}`, accept: "application/json" },
       redirect: "error", cache: "no-store", signal: AbortSignal.timeout(20_000),
     });
-  } catch { throw new Error("Coolify nicht erreichbar (Netzwerk, Timeout oder Weiterleitung)."); }
+  } catch { throw new _Error("validation.mc856b2fda2"); }
   // Never surface upstream bodies: they can contain secrets or reflect the token.
-  if (!response.ok) throw new Error(`Coolify HTTP ${response.status}. API-Freigabe und Read-Token prüfen.`);
-  if (!response.body) throw new Error("Coolify liefert keine Antwort.");
+  if (!response.ok) throw new _Error("validation.m804bb95f93", { value0: response.status });
+  if (!response.body) throw new _Error("validation.m98e3f918b5");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -95,13 +96,13 @@ async function coolifyGet(baseUrl: string, path: string, token: string): Promise
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 4_000_000) throw new Error("Coolify-Antwort überschreitet das Größenlimit.");
+      if (size > 4_000_000) throw new _Error("validation.m7ac67ff2c2");
       chunks.push(value);
     }
   } finally { await reader.cancel().catch(() => {}); }
   let data: unknown;
   try { data = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-  catch { throw new Error("Coolify liefert kein gültiges JSON."); }
+  catch { throw new _Error("validation.m6833ea4d91"); }
   return data;
 }
 
@@ -112,7 +113,7 @@ export async function fetchCoolifyApplications(baseUrl: string, token: string) {
 // Nur die Namen der Env-Variablen einer App, Werte werden sofort verworfen.
 // Coolify-eigene Variablen und Preview-Duplikate fallen weg.
 export function parseCoolifyEnvKeys(data: unknown): string[] {
-  if (!Array.isArray(data)) throw new Error("Coolify liefert keine Env-Liste.");
+  if (!Array.isArray(data)) throw new _Error("validation.m2b0041bd76");
   const keys = data.flatMap((row) => {
     if (!row || typeof row !== "object") return [];
     const { key, is_preview } = row as { key?: unknown; is_preview?: unknown };
@@ -122,6 +123,6 @@ export function parseCoolifyEnvKeys(data: unknown): string[] {
 }
 
 export async function fetchCoolifyEnvKeys(baseUrl: string, token: string, uuid: string) {
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(uuid)) throw new Error("Ungültige Coolify-App.");
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(uuid)) throw new _Error("validation.m9f22eae99c");
   return parseCoolifyEnvKeys(await coolifyGet(baseUrl, `/applications/${uuid}/envs`, token));
 }

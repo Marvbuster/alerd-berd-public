@@ -1,22 +1,28 @@
+import { translate as _t } from "@/i18n/translate";
+import { getLocale as _getLocale } from "next-intl/server";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { inviteState } from "@/lib/invite";
 import { resetPassword } from "./actions";
 import { AlerdLogo } from "@/components/AlerdLogo";
 
-export const metadata: Metadata = { title: "Alerd Berd — Passwort zurücksetzen" };
+export async function generateMetadata(): Promise<Metadata> {
+  const _locale = await _getLocale();
+  return { title: _t(_locale, "metadata.reset") };
+}
 export const dynamic = "force-dynamic";
 
-const FORM_ERRORS: Record<string, string> = {
-  pw_short: "Passwort zu kurz (mindestens 8 Zeichen)",
-  pw_mismatch: "Passwörter stimmen nicht überein",
-};
+function FORM_ERRORS(_locale: string = "de"): Record<string, string> { return ({
+  pw_short: _t(_locale, "reset.m50456e30ae"),
+  pw_mismatch: _t(_locale, "reset.m943de6dfe4"),
+}); }
 
 export default async function ResetPage({
   searchParams,
 }: {
   searchParams: Promise<{ code?: string; error?: string }>;
 }) {
+  const _locale = await _getLocale();
   const sp = await searchParams;
   const code = sp.code ?? "";
   const field =
@@ -33,37 +39,35 @@ export default async function ResetPage({
 
   const statusNote =
     !reset
-      ? "Code unbekannt — der Link ist ungültig."
+      ? _t(_locale, "reset.me2f812e512")
       : state === "used"
-        ? "Dieser Link wurde bereits benutzt."
+        ? _t(_locale, "reset.ma90f77b2b2")
         : state === "expired"
-          ? "Dieser Link ist abgelaufen."
+          ? _t(_locale, "reset.mcbd75e6ff7")
           : null;
 
   return (
     <main className="grid min-h-[calc(100dvh-84px)] place-items-center px-5 py-10">
       <div className="panel auth-card">
         <AlerdLogo size={80} className="mb-6" />
-        <h1 className="auth-heading">Neues Passwort.</h1>
-        <p className="auth-description">Richte deinen Zugang wieder ein.</p>
+        <h1 className="auth-heading">{_t(_locale, "reset.m8bce7305a2")}</h1>
+        <p className="auth-description">{_t(_locale, "reset.ma51b396e71")}</p>
 
         {!usable ? (
           <p className="text-sm text-[var(--fg-dim)]">
             {statusNote}
             <br />
-            <span className="mt-3 block text-xs">Frag den Alerd-Betreiber nach einem neuen Reset-Link.</span>
+            <span className="mt-3 block text-xs">{_t(_locale, "reset.m2d7c08f9e8")}</span>
           </p>
         ) : (
           <form action={resetPassword} autoComplete="on">
             <input type="hidden" name="code" value={code} />
 
             <p className="mb-5 text-xs text-[var(--fg-dim)]">
-              Neues Passwort für <span className="text-[var(--fg)]">{reset.user.email}</span> setzen.
-            </p>
+              {_t(_locale, "reset.m05a4b198a2")}<span className="text-[var(--fg)]">{reset.user.email}</span> {_t(_locale, "reset.me69d71bb19")}</p>
 
             <label htmlFor="password" className="mb-1 block text-xs font-medium text-[var(--fg-dim)]">
-              neues passwort
-            </label>
+              {_t(_locale, "reset.m23e50782ed")}</label>
             <input
               id="password"
               name="password"
@@ -75,8 +79,7 @@ export default async function ResetPage({
             />
 
             <label htmlFor="password2" className="mb-1 block text-xs font-medium text-[var(--fg-dim)]">
-              passwort wiederholen
-            </label>
+              {_t(_locale, "reset.me4c6bd360b")}</label>
             <input
               id="password2"
               name="password2"
@@ -87,11 +90,11 @@ export default async function ResetPage({
               className={field}
             />
 
-            {sp.error && FORM_ERRORS[sp.error] && (
-              <p className="mt-3 text-xs" style={{ color: "var(--down)" }}>{FORM_ERRORS[sp.error]}</p>
+            {sp.error && FORM_ERRORS(_locale)[sp.error] && (
+              <p className="mt-3 text-xs" style={{ color: "var(--down)" }}>{FORM_ERRORS(_locale)[sp.error]}</p>
             )}
 
-            <button type="submit" className="btn mt-6 w-full !text-[var(--fg)]">passwort setzen</button>
+            <button type="submit" className="btn mt-6 w-full !text-[var(--fg)]">{_t(_locale, "reset.me9855fd226")}</button>
           </form>
         )}
       </div>

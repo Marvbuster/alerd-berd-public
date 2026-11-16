@@ -15,9 +15,21 @@
   <img src="https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 17">
 </p>
 
-> **Heads-up:** the interface is German only for now. Die Oberfläche ist derzeit nur auf Deutsch verfügbar.
+Available in **English** and **German**, including mails, push and the update assistant. Each user picks a language in Settings, new instances default to English (`ALERD_DEFAULT_LOCALE=de` switches that).
 
 ---
+
+## Built for Coolify
+
+Alerd Berd is made for apps you deploy with [Coolify](https://coolify.io). Monitoring and alerts work for any URL, but the services view, version watch and dependency updates all start from your Coolify apps: Alerd reads the app list from the Coolify API, takes the GitHub repository and branch from each app, and lets Coolify do the deploy after a push.
+
+| You have | You get |
+|---|---|
+| Just URLs to watch | Monitors, incidents, Web Push and email alerts, the health contract |
+| + a Coolify instance with apps from GitHub | Services view, live versions, version watch, daily digest |
+| + a GitHub token with push rights and Claude Code (or a local analysis node) | Dependency updates with analysis, tested diff and approval per step |
+
+Without Coolify, Alerd Berd is a capable uptime monitor, and the update side stays empty.
 
 ## Why
 
@@ -29,10 +41,10 @@ Most uptime tools tell you a service is down. Alerd Berd also asks the service h
 |---|---|
 | **Monitoring** | Health contract, HTTP, keyword, TCP, ping and push monitors. Every check turns into a traffic light, and a service can only report itself worse, never better than it looks from outside. |
 | **Incidents & alerts** | Outages become incidents. Alerts go out once per channel via **Web Push** (installable PWA, Android and iOS 16.4+) and **email** (Brevo or SMTP). |
-| **Services view** | Monitors, live version, packages and updates of every app on one page, plus a 3D sphere if you like it fancy. |
-| **Version watch** | Reads `package.json` and the lockfile from GitHub, compares with what runs live and flags security fixes, recommended majors and known issues. |
-| **Dependency updates** | An update chat per service. Claude Code (or a local analysis node) reads release notes and your repo, a worker prepares and tests the change, and nothing is pushed until you approve it. |
-| **Daily digest** | One morning mail with all pending updates, grouped across services. |
+| **Services view** *(Coolify)* | Monitors, live version, packages and updates of every app on one page, plus a 3D sphere if you like it fancy. |
+| **Version watch** *(Coolify + GitHub)* | Reads `package.json` and the lockfile from GitHub, compares with what runs live and flags security fixes, recommended majors and known issues. |
+| **Dependency updates** *(Coolify + GitHub + Claude Code)* | An update chat per service. Claude Code (or a local analysis node) reads release notes and your repo, a worker prepares and tests the change, and nothing is pushed until you approve it. |
+| **Daily digest** *(Coolify)* | One morning mail with all pending updates, grouped across services. |
 | **Coolify integration** | Imports your Coolify apps, watches deploys and checks that the pushed commit is really live. |
 
 ## The health contract
@@ -153,6 +165,7 @@ Prefer a prebuilt image? Tagged releases are published to `ghcr.io/marvbuster/al
 | `AUTH_SECRET` | Session signing secret, at least 32 characters. Empty means development access, never leave it empty when hosting. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Admin account, created at container start. |
 | `ALERD_PUBLIC_URL` | External base URL for links in mails and invitations. |
+| `ALERD_DEFAULT_LOCALE` | `en` by default; set `de` for a German instance. Used after browser preferences and as the background fallback when User.locale is unset. |
 | `CREDENTIAL_ENCRYPTION_KEY` | 64-character hex key that encrypts integration credentials in the database. |
 | `RUN_CHECKS_SECRET` | Bearer secret for the check runner. |
 | `COOLIFY_ALLOWED_ORIGINS` | Comma-separated Coolify origins you allow, without paths. |

@@ -1,6 +1,7 @@
 import { dependencyPhase, TERMINAL_STATUSES, type Phase, type WorkerBusy } from "@/lib/dependency-phase";
 import { jobLabel, jobPackages } from "@/lib/dependency-target";
 import { parseProgress, type ProgressStep } from "@/lib/dependency-progress";
+import { translateMessage } from "@/i18n/translate";
 
 // Die Warteschlange des Workers, so wie er sie abarbeitet: ein Job nach dem
 // anderen, der älteste Statuswechsel zuerst (tick() im Worker). Der Worker ist
@@ -38,21 +39,21 @@ export type Queue = {
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
-export function buildQueue(jobs: QueueJobInput[], viewerId: string, now: Date, workerLastSeen: Date | null = null): Queue {
+export function buildQueue(jobs: QueueJobInput[], viewerId: string, now: Date, workerLastSeen: Date | null = null, locale = "de"): Queue {
   const locked = (j: QueueJobInput) => !!j.workerLockedUntil && j.workerLockedUntil > now;
   const runningJobs = jobs.filter((j) => locked(j) && ACTIVE.includes(j.status)).sort((a, b) => +(b.workerAttemptAt ?? b.updatedAt) - +(a.workerAttemptAt ?? a.updatedAt));
   const top = runningJobs[0];
-  const workerBusy: WorkerBusy | null = top ? { jobId: top.id, appName: top.applicationName, owner: top.ownerName, label: jobLabel(jobPackages(top)), status: top.status, since: top.workerAttemptAt ?? top.updatedAt } : null;
+  const workerBusy: WorkerBusy | null = top ? { jobId: top.id, appName: top.applicationName, owner: top.ownerName, label: jobLabel(jobPackages(top), locale), status: top.status, since: top.workerAttemptAt ?? top.updatedAt } : null;
 
   const entry = (j: QueueJobInput): QueueEntry => {
     const own = j.ownerId === viewerId;
-    const phase = dependencyPhase(j, now, { workerBusy, workerLastSeen });
+    const phase = dependencyPhase(j, now, { workerBusy, workerLastSeen }, locale);
     const last = own ? j.messages.at(-1) ?? null : null;
     return {
-      jobId: j.id, applicationId: j.applicationId, applicationName: j.applicationName, label: jobLabel(jobPackages(j)), status: j.status,
+      jobId: j.id, applicationId: j.applicationId, applicationName: j.applicationName, label: jobLabel(jobPackages(j), locale), status: j.status,
       owner: j.ownerName, own, actor: phase.actor, title: phase.title, detail: own ? phase.detail : "",
       since: iso(phase.since), changedAt: j.updatedAt.toISOString(), lockedUntil: iso(j.workerLockedUntil),
-      latest: last?.content.split("\n")[0] ?? null, latestAt: iso(last?.createdAt ?? null),
+      latest: last ? translateMessage(locale, last.content).split("\n")[0] : null, latestAt: iso(last?.createdAt ?? null),
       progress: [],
     };
   };

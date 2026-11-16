@@ -1,5 +1,7 @@
 "use server";
 
+import { messageCode as _code } from "@/i18n/translate";
+
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser, sha256hex } from "@/lib/auth";
@@ -25,6 +27,6 @@ export async function revokeApiKey(id: string) {
     where: { id, userId: user.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
-  if (res.count === 0) throw new Error("Key nicht gefunden.");
+  if (res.count === 0) throw new Error(_code("actions.me6e11971d6"));
   revalidatePath("/settings/keys");
 }

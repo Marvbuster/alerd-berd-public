@@ -1,3 +1,5 @@
+import { translate as _t } from "@/i18n/translate";
+import { getLocale as _getLocale } from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
@@ -17,6 +19,7 @@ export default async function MonitorDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const _locale = await _getLocale();
   const { id } = await params;
   const user = await requireUser();
   const node = await loadMonitorNode(id, user.id);
@@ -47,9 +50,9 @@ export default async function MonitorDetailPage({
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm">
-        <Link href={`/services#${node.coolifyApps.length ? `app-${node.coolifyApps[0].id}` : `mon-${node.id}`}`} className="btn btn--ghost">◀ Dienst</Link>
+        <Link href={`/services#${node.coolifyApps.length ? `app-${node.coolifyApps[0].id}` : `mon-${node.id}`}`} className="btn btn--ghost">{_t(_locale, "monitors_id.mc788ed49c3")}</Link>
         <form action={checkMonitorNow.bind(null, node.id)}>
-          <button type="submit" className="btn btn--ghost">↻ Jetzt prüfen</button>
+          <button type="submit" className="btn btn--ghost">{_t(_locale, "monitors_id.m1a9539aa78")}</button>
         </form>
       </div>
 
@@ -60,39 +63,37 @@ export default async function MonitorDetailPage({
         <MonitorDetail
           node={node}
           footerActions={
-            <Link href={`/monitors/${node.id}/edit`} className="btn btn--ghost">Bearbeiten</Link>
+            <Link href={`/monitors/${node.id}/edit`} className="btn btn--ghost">{_t(_locale, "monitors_id.m84e45ee734")}</Link>
           }
         />
       </div>
 
       {node.kind === "PUSH" && (
         <div className="panel mt-4 space-y-3 rounded-2xl p-5 sm:p-7">
-          <h2 className="text-sm font-semibold">Push-Eingang</h2>
+          <h2 className="text-sm font-semibold">{_t(_locale, "monitors_id.m56ee8371df")}</h2>
           {pushUrl ? (
             <div>
               <p className="mb-1 text-xs text-[var(--fg-dim)]">
-                Diese URL bei der Quelle als Webhook-Ziel eintragen (z. B. Coolify → Notifications → Webhook):
-              </p>
+                {_t(_locale, "monitors_id.m6f669a452f")}</p>
               <code className="block break-all rounded-md bg-black/30 px-3 py-2 text-sm text-[var(--fg)]">
                 {pushUrl}
               </code>
               <p className="mt-1 text-xs text-[var(--fg-dim)]">
-                Das Token in der URL ist das Secret — nicht öffentlich teilen.
-              </p>
+                {_t(_locale, "monitors_id.m3fb195635d")}</p>
             </div>
           ) : (
-            <p className="text-sm text-[var(--fg-dim)]">Kein Ingest-Token gesetzt.</p>
+            <p className="text-sm text-[var(--fg-dim)]">{_t(_locale, "monitors_id.m81a433c1b7")}</p>
           )}
           {lastEvent && (
             <p className="text-sm text-[var(--fg-dim)]">
-              Letztes Event: <span className="text-[var(--fg)]">{lastEvent.event ?? "—"}</span>
+              {_t(_locale, "monitors_id.m75e65631ec")}<span className="text-[var(--fg)]">{lastEvent.event ?? "—"}</span>
               {lastEvent.message ? ` — ${lastEvent.message}` : ""}
             </p>
           )}
           {node.status !== "UP" && node.status !== "UNKNOWN" && (
             <form action={resolvePushMonitor.bind(null, node.id)} className="flex flex-wrap items-center gap-3">
-              <button className="btn btn--ghost">Als behoben markieren</button>
-              <span className="text-xs text-[var(--fg-dim)]">Wenn die Quelle keine Entwarnung schickt, etwa nach einer Bereinigung per Hand.</span>
+              <button className="btn btn--ghost">{_t(_locale, "monitors_id.mc6019167de")}</button>
+              <span className="text-xs text-[var(--fg-dim)]">{_t(_locale, "monitors_id.m7824c57703")}</span>
             </form>
           )}
         </div>

@@ -1,5 +1,8 @@
 "use client";
 
+import { translate as _t } from "@/i18n/translate";
+import { useLocale as _useLocale } from "next-intl";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -15,6 +18,7 @@ export const NOTIFICATIONS_EVENT = "alerd:notifications";
 const BUSY = new Set(["worker", "waiting"]);
 
 export function NotificationHub({ initial }: { initial: DependencyNotification[] }) {
+  const _locale = _useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const [items, setItems] = useState(initial);
@@ -109,40 +113,40 @@ export function NotificationHub({ initial }: { initial: DependencyNotification[]
   const enablePush = async () => {
     setPushMessage("…");
     try {
-      const result = await subscribePush();
+      const result = await subscribePush(_locale);
       setPushMessage(result.ok ? "" : result.message);
       if (result.ok) setPush("on"); else if (Notification.permission === "denied") setPush("denied");
     } catch (e) { setPushMessage(String(e)); }
   };
 
   return <div className="notification-hub" ref={rootRef}>
-    <button type="button" className={`icon-button notification-bell${ring ? " notification-bell--ring" : ""}`} aria-label={unread ? `${unread} neue Meldungen` : "Meldungen"} aria-expanded={open} onClick={() => { setOpen((v) => !v); if (!open) void load(); }}>
+    <button type="button" className={`icon-button notification-bell${ring ? " notification-bell--ring" : ""}`} aria-label={unread ? _t(_locale, "NotificationHub.m08a2d5226e", { value0: unread }) : _t(_locale, "common.notifications")} aria-expanded={open} onClick={() => { setOpen((v) => !v); if (!open) void load(); }}>
       <Icon name="bell" size={18} />
       {unread > 0 && <span className="notification-badge">{unread}</span>}
       {!unread && busy && <span className="notification-busy" />}
     </button>
-    <div className={`notification-panel${open ? " notification-panel--open" : ""}`} role="dialog" aria-label="Meldungen" aria-hidden={!open}>
-      <div className="notification-panel-head"><span>Updates</span>{unread > 0 && <button type="button" onClick={markAll}>Alle gelesen</button>}</div>
+    <div className={`notification-panel${open ? " notification-panel--open" : ""}`} role="dialog" aria-label={_t(_locale, "NotificationHub.me6a6654d17")} aria-hidden={!open}>
+      <div className="notification-panel-head"><span>{_t(_locale, "NotificationHub.m22e2bada8f")}</span>{unread > 0 && <button type="button" onClick={markAll}>{_t(_locale, "NotificationHub.mfbaa45b3e5")}</button>}</div>
       {items.length === 0
-        ? <p className="notification-empty">Gerade nichts los.</p>
-        : <>{[{ title: "Neu", list: items.filter((i) => i.unread) }, { title: "Gesehen", list: items.filter((i) => !i.unread) }].map(({ title, list }) => list.length > 0 && <div key={title}>
+        ? <p className="notification-empty">{_t(_locale, "NotificationHub.m6f4eb2f576")}</p>
+        : <>{[{ title: _t(_locale, "NotificationHub.md9b1e13f3b"), list: items.filter((i) => i.unread) }, { title: _t(_locale, "NotificationHub.mc1b3878473"), list: items.filter((i) => !i.unread) }].map(({ title, list }) => list.length > 0 && <div key={title}>
           {/* Überschriften nur, wenn es beides gibt, sonst sagt der Zustand alles. */}
           {unread > 0 && unread < items.length && <p className="notification-section">{title}</p>}
           <ul>{list.map((item) => <li key={item.jobId}>
             <button type="button" className={`notification-item${item.unread ? " notification-item--unread" : ""}`} tabIndex={open ? 0 : -1} onClick={() => go(item)}>
               <span className="min-w-0 flex-1">
-                <span className="notification-app"><span>{item.applicationName}</span>{item.unread && <span className="notification-new">Neu</span>}</span>
-                <span className="notification-title">{item.label ?? `Next ${item.targetVersion}`} · {item.current ?? item.title} · {BUSY.has(item.actor) && item.since ? elapsed(new Date(item.since), now) : ago(new Date(item.changedAt), now)}</span>
+                <span className="notification-app"><span>{item.applicationName}</span>{item.unread && <span className="notification-new">{_t(_locale, "NotificationHub.md9b1e13f3b")}</span>}</span>
+                <span className="notification-title">{item.label ?? _t(_locale, "NotificationHub.mc661b3d464", { value0: item.targetVersion })} · {item.current ?? item.title} · {BUSY.has(item.actor) && item.since ? elapsed(new Date(item.since), now) : ago(new Date(item.changedAt), now, _locale)}</span>
               </span>
               <StateChip actor={item.actor} />
             </button>
           </li>)}</ul>
         </div>)}</>}
-      <Link href="/queue" className="notification-foot" tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}>Warteschlange ansehen</Link>
+      <Link href="/queue" className="notification-foot" tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}>{_t(_locale, "NotificationHub.mefe2001afd")}</Link>
       {(push === "off" || push === "denied") && <div className="notification-push">
         {push === "off"
-          ? <><span>Meldungen auch als Push auf dieses Gerät</span><button type="button" tabIndex={open ? 0 : -1} onClick={enablePush}>Aktivieren</button></>
-          : <span>Push ist im Browser blockiert, in den Website-Einstellungen erlauben.</span>}
+          ? <><span>{_t(_locale, "NotificationHub.ma7be7035de")}</span><button type="button" tabIndex={open ? 0 : -1} onClick={enablePush}>{_t(_locale, "NotificationHub.mcfc6942928")}</button></>
+          : <span>{_t(_locale, "NotificationHub.m0cc683db31")}</span>}
         {pushMessage && pushMessage !== "…" && <span className="notification-push-error">{pushMessage}</span>}
       </div>}
     </div>

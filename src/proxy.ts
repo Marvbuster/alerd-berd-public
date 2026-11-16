@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/jwt";
+import { prisma } from "@/lib/prisma";
+import { asLocale, LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from "@/i18n/locale";
 
 // Next 16: "proxy" (früher "middleware"). Multi-User-Zugangsmodell: ALLES ist
 // geschützt, Zugang nur mit gültiger Session (JWT-Cookie, jose/edge-safe). Der
@@ -30,15 +32,30 @@ function isAlwaysPublic(pathname: string): boolean {
 
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
-  if (isAlwaysPublic(pathname)) return NextResponse.next();
+  // Liveness und Maschinen-Endpunkte bleiben ohne zusätzliche DB-Abfrage.
+  if (isAlwaysPublic(pathname) && pathname.startsWith("/api/")) return NextResponse.next();
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? await verifySession(token) : null;
+  const cookie = req.cookies.get(LOCALE_COOKIE)?.value;
+  const user = session && !asLocale(cookie) ? await prisma.user.findUnique({ where: { id: session.userId }, select: { locale: true, active: true } }) : null;
+  const locale = resolveLocale({ cookie, user: user?.active ? user.locale : null, acceptLanguage: req.headers.get("accept-language") });
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set(LOCALE_HEADER, locale);
+  // Kontosprache einmal aus der DB holen und als Cookie merken, sonst fragte jeder
+  // Request ohne Cookie (auch die Polls im Sekundentakt) die DB. Ohne gespeicherte
+  // Kontosprache nur einen Tag, damit Browser- oder Env-Änderungen ankommen.
+  const next = () => {
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    if (user?.active) response.cookies.set(LOCALE_COOKIE, locale, { path: "/", sameSite: "lax", httpOnly: true, secure: process.env.NODE_ENV === "production", maxAge: asLocale(user.locale) ? 365 * 86_400 : 86_400 });
+    return response;
+  };
+  if (isAlwaysPublic(pathname)) return next();
 
   // Kein AUTH_SECRET gesetzt (reines Dev-Setup ohne Accounts) → offen lassen,
   // sonst sperrt man sich lokal komplett aus.
-  if (!process.env.AUTH_SECRET) return NextResponse.next();
+  if (!process.env.AUTH_SECRET) return next();
 
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
-  if (session) return NextResponse.next();
+  if (session) return next();
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

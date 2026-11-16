@@ -7,7 +7,7 @@ import type { DependencyJobStatus } from "@prisma/client";
 // zwischen zwei Prüfungen zurück, der Worker ist in der Zeit frei.
 const ACTIVE: DependencyJobStatus[] = ["ANALYZING", "APPROVED", "RUNNING", "VERIFYING", "PUBLISHING", "LIVE_REVIEW"];
 
-export async function loadWorkerBusy(now = new Date()): Promise<WorkerBusy | null> {
+export async function loadWorkerBusy(now = new Date(), locale = "de"): Promise<WorkerBusy | null> {
   const job = await prisma.dependencyJob.findFirst({
     where: { status: { in: ACTIVE }, workerLockedUntil: { gt: now } },
     orderBy: { workerAttemptAt: "desc" },
@@ -19,7 +19,7 @@ export async function loadWorkerBusy(now = new Date()): Promise<WorkerBusy | nul
   if (!job) return null;
   return {
     jobId: job.id, appName: job.application.name, owner: job.owner.name || job.owner.email.split("@")[0],
-    label: jobLabel(jobPackages(job)), status: job.status, since: job.workerAttemptAt ?? job.updatedAt,
+    label: jobLabel(jobPackages(job), locale), status: job.status, since: job.workerAttemptAt ?? job.updatedAt,
   };
 }
 
@@ -29,7 +29,7 @@ export async function loadWorkerLastSeen(): Promise<Date | null> {
   return job?.workerAttemptAt ?? null;
 }
 
-export async function loadWorkerStatus(now = new Date()): Promise<{ busy: WorkerBusy | null; lastSeen: Date | null }> {
-  const [busy, lastSeen] = await Promise.all([loadWorkerBusy(now), loadWorkerLastSeen()]);
+export async function loadWorkerStatus(now = new Date(), locale = "de"): Promise<{ busy: WorkerBusy | null; lastSeen: Date | null }> {
+  const [busy, lastSeen] = await Promise.all([loadWorkerBusy(now, locale), loadWorkerLastSeen()]);
   return { busy, lastSeen };
 }

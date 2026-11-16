@@ -1,3 +1,4 @@
+import { translate as _t } from "@/i18n/translate";
 // Reine Logik der Dienste-Ansicht, ohne DB und ohne React: Ampel aus mehreren
 // Checks, Hosts und Domains vergleichen, Health-Probes deuten, filtern.
 import type { VizStatus } from "./viz";
@@ -18,30 +19,33 @@ export function aggregateStatus(checks: { status: VizStatus; enabled: boolean }[
 // Reihenfolge in der Liste: was Aufmerksamkeit braucht, zuerst.
 export const STATUS_ORDER: Record<ServiceStatus, number> = { DOWN: 0, DEGRADED: 1, UNKNOWN: 2, UNMONITORED: 3, UP: 4, PAUSED: 5 };
 
-export const STATUS_META: Record<ServiceStatus, { label: string; cls: string }> = {
-  UP: { label: "Online", cls: "up" },
-  DEGRADED: { label: "Eingeschränkt", cls: "degraded" },
-  DOWN: { label: "Offline", cls: "down" },
-  UNKNOWN: { label: "Unbekannt", cls: "unknown" },
-  PAUSED: { label: "Pausiert", cls: "unknown" },
-  UNMONITORED: { label: "Nicht überwacht", cls: "unknown" },
-};
+export function localizedSTATUS_META(_locale: string = "de"): Record<ServiceStatus, { label: string; cls: string }> { return ({
+  UP: { label: _t(_locale, "service_logic.m0d21bd5202"), cls: "up" },
+  DEGRADED: { label: _t(_locale, "service_logic.m55b60500c7"), cls: "degraded" },
+  DOWN: { label: _t(_locale, "service_logic.ma1794783aa"), cls: "down" },
+  UNKNOWN: { label: _t(_locale, "service_logic.m276ffa1fb4"), cls: "unknown" },
+  PAUSED: { label: _t(_locale, "service_logic.m02a733f164"), cls: "unknown" },
+  UNMONITORED: { label: _t(_locale, "service_logic.m3d28c2e598"), cls: "unknown" },
+}); }
+export const STATUS_META = localizedSTATUS_META();
 
-export const CHECK_KIND_LABEL: Record<string, string> = {
-  HEALTH: "Spec-Health", HTTP: "Erreichbarkeit", PUSH: "Push",
+export function localizedCHECK_KIND_LABEL(_locale: string = "de"): Record<string, string> { return ({
+  HEALTH: _t(_locale, "service_logic.me6f5858c68"), HTTP: _t(_locale, "service_logic.mbecf4edf10"), PUSH: _t(_locale, "service_logic.m731ce7ed80"),
   // Auslaufende Arten: bestehende Checks bleiben sichtbar, neue gibt es nicht.
-  TCP: "TCP (alt)", KEYWORD: "Keyword (alt)", PING: "Ping (alt)",
-};
+  TCP: _t(_locale, "service_logic.mac281519eb"), KEYWORD: _t(_locale, "service_logic.mf734b5a889"), PING: _t(_locale, "service_logic.m796e1d6cb6"),
+}); }
+export const CHECK_KIND_LABEL = localizedCHECK_KIND_LABEL();
 
 // Gliederung der Dienstliste nach Art der Überwachung. Hat ein Dienst mehrere
 // Monitore, zählt der aussagekräftigste: Spec-Health vor Erreichbarkeit vor Push.
 export type ServiceGroup = "HEALTH" | "REACH" | "PUSH" | "NONE";
-export const SERVICE_GROUPS: { id: ServiceGroup; label: string }[] = [
-  { id: "HEALTH", label: "Spec-Health" },
-  { id: "REACH", label: "Erreichbarkeit" },
-  { id: "PUSH", label: "Push" },
-  { id: "NONE", label: "Ohne Monitor" },
-];
+export function localizedSERVICE_GROUPS(_locale: string = "de"): { id: ServiceGroup; label: string }[] { return ([
+  { id: "HEALTH", label: _t(_locale, "service_logic.me6f5858c68") },
+  { id: "REACH", label: _t(_locale, "service_logic.mbecf4edf10") },
+  { id: "PUSH", label: _t(_locale, "service_logic.m731ce7ed80") },
+  { id: "NONE", label: _t(_locale, "service_logic.m84d966d03f") },
+]); }
+export const SERVICE_GROUPS = localizedSERVICE_GROUPS();
 export function serviceGroup(monitors: { kind: string }[]): ServiceGroup {
   if (monitors.some((m) => m.kind === "HEALTH")) return "HEALTH";
   if (monitors.some((m) => m.kind !== "PUSH")) return "REACH";

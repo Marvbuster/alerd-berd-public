@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { signSession, verifySession, SESSION_COOKIE } from "./jwt";
+import { LOCALE_COOKIE } from "@/i18n/locale";
 
 // Cookie-IO fürs Session-JWT. getSession() prüft nur Signatur+Expiry (kein
 // DB-Roundtrip) — die User-Daten lädt currentUser() in auth.ts.
@@ -16,6 +17,8 @@ export async function startSession(userId: string): Promise<void> {
     maxAge: MAX_AGE,
     path: "/",
   });
+  // Sprach-Cookie gehört zum vorigen Konto; der Proxy liest die Kontosprache neu.
+  (await cookies()).delete(LOCALE_COOKIE);
 }
 
 export async function getSession(): Promise<{ userId: string } | null> {
