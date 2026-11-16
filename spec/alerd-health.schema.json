@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alerd-board/spec/alerd-health.schema.json",
+  "title": "Alerd Berd Health Response v1",
+  "description": "Contract, den ein überwachter Dienst unter seiner Health-Route (default GET /health) zurückgibt. Alerd Berd pollt die Route und leitet daraus eine Ampel ab (UP/DEGRADED/DOWN). Alle Felder außer 'status' sind optional — ein minimaler Dienst darf nur {\"status\":\"ok\"} liefern.",
+  "type": "object",
+  "required": ["status"],
+  "additionalProperties": true,
+  "properties": {
+    "status": {
+      "description": "Selbsteinschätzung des Dienstes und primäre Farbquelle: sobald diese Antwort ankommt und parsebar ist, leitet Alerd Berd die Ampel aus status + components + metrics ab (der HTTP-Code entscheidet nur, OB eine Antwort da ist). Alerd-Board-seitige Fallbacks können die Farbe nur verschlechtern, nie beschönigen.",
+      "enum": ["ok", "degraded", "down"]
+    },
+    "version": {
+      "description": "Laufende Version des Dienstes (SemVer o. ä.) — rein informativ, wird im Dashboard angezeigt.",
+      "type": "string"
+    },
+    "uptimeSec": {
+      "description": "Laufzeit des Prozesses in Sekunden seit letztem Start.",
+      "type": "number",
+      "minimum": 0
+    },
+    "timestamp": {
+      "description": "Zeitpunkt der Antwort (ISO-8601, UTC). Erlaubt Alerd Berd, veraltete/eingefrorene Antworten zu erkennen.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "runtime": {
+      "description": "Optional (additiv in v1): Laufzeit- und Framework-Versionen, die im laufenden Prozess tatsächlich stecken. Zur Laufzeit lesen (z. B. aus node_modules/next/package.json), nicht aus package.json-Ranges oder zur Build-Zeit hartkodiert. Alerd Berd vergleicht sie mit npm-Releases und der GitHub Advisory Database (Versionswächter) und zeigt veraltete oder verwundbare Versionen als eigenes Badge, getrennt von der Verfügbarkeits-Ampel. Gehört nur in die geschützte Spec-Route, nie in eine öffentliche Liveness.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "node": {
+          "description": "Node.js-Version des Prozesses (process.versions.node), ohne führendes v.",
+          "type": "string"
+        },
+        "commit": {
+          "description": "Git-Commit, aus dem der laufende Build stammt (40 oder mindestens 7 Hex-Zeichen). In Coolify: SOURCE_COMMIT (Advanced > Build > Source commit availability > Available during build), im Dockerfile als ARG an ENV durchreichen. Belegt den Live-Stand aller Pakete aus dem Lockfile dieses Commits und bestätigt Updates aus Alerd exakt.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{7,40}$"
+        },
+        "packages": {
+          "description": "npm-Paketname → exakt installierte SemVer, z. B. {\"next\": \"16.4.5\"}. Alerd bewertet alle Pakete, die der Betreiber am Dienst beobachtet.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "components": {
+      "description": "Teil-Systeme des Dienstes (DB, Cache, externe API …). Ein 'down' hier färbt den Monitor rot, ein 'degraded' orange.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "enum": ["ok", "degraded", "down"] },
+          "detail": {
+            "description": "Kurze Klartext-Ursache, landet bei DOWN in Incident.cause.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "description": "Numerische Messwerte mit optionalen Schwellen. Wert ≥ warn → DEGRADED (orange), Wert ≥ crit → DOWN (rot). Fehlen die Schwellen im Payload, greifen die am Monitor konfigurierten (falls gesetzt).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "value"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" },
+          "value": { "type": "number" },
+          "unit": {
+            "description": "z. B. 'ms', 'MB', '%', 'count'.",
+            "type": "string"
+          },
+          "warn": {
+            "description": "Schwelle für DEGRADED (orange). Standardrichtung: höher = schlechter.",
+            "type": "number"
+          },
+          "crit": {
+            "description": "Schwelle für DOWN (rot).",
+            "type": "number"
+          },
+          "direction": {
+            "description": "'above' (default): Wert über Schwelle ist schlecht. 'below': Wert unter Schwelle ist schlecht (z. B. freier Speicher).",
+            "enum": ["above", "below"],
+            "default": "above"
+          }
+        }
+      }
+    }
+  }
+}

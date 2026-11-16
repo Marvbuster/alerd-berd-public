@@ -1,0 +1,15 @@
+{
+  "$comment": "Kuratierte bekannte Probleme mit öffentlicher Primärquelle. Validiert durch src/lib/known-issues.test.ts.",
+  "issues": [
+    {
+      "id": "typescript-7.0-typescript-eslint",
+      "package": "typescript",
+      "range": ">=7.0.0 <7.1.0",
+      "kind": "build-trap",
+      "title": "typescript-eslint unterstützt TS 7.0 nicht, eslint bricht mit „typescript-eslint does not support TS 7.0“ ab",
+      "hint": "Typecheck und next build laufen, nur Lint nicht. Bis zur Unterstützung auf 5.9 bleiben oder TS 6 parallel für typescript-eslint installieren, wie in der Ankündigung beschrieben.",
+      "source": "https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0",
+      "addedAt": "2026-11-14"
+    }
+  ]
+}

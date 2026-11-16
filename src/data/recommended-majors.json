@@ -1,0 +1,71 @@
+{
+  "$comment": "Kuratierte Major-Updates, die Alerd trotz Versionssprung empfiehlt, weil sie die Performance deutlich verbessern. Jeder Eintrag braucht eine prüfbare Quelle mit konkreten Zahlen (Release-Ankündigung, Benchmark). Nichts erfinden: lieber ein Eintrag weniger. Alerd schlägt die neueste reife Version dieser Major vor, markiert sie als breaking (nicht vorausgewählt) und zeigt den Titel als Grund. issues: GitHub-Repo und Suchfilter (Bug-Label des Repos) für die täglich geholten offenen Issues seit Erscheinen der Major. Validiert durch src/lib/recommended-majors.test.ts.",
+  "majors": [
+    {
+      "id": "typescript-7-native",
+      "package": "typescript",
+      "major": 7,
+      "title": "Nativer Compiler, Typecheck und Builds etwa 10× schneller",
+      "source": "https://devblogs.microsoft.com/typescript/typescript-native-port/",
+      "issues": {
+        "repo": "microsoft/TypeScript",
+        "query": "label:Bug"
+      }
+    },
+    {
+      "id": "zod-4",
+      "package": "zod",
+      "major": 4,
+      "title": "Parsing 6,5× bis 14× schneller, 100× weniger tsc-Instanziierungen",
+      "source": "https://zod.dev/v4",
+      "issues": {
+        "repo": "colinhacks/zod",
+        "query": "label:bug"
+      }
+    },
+    {
+      "id": "tailwindcss-4-oxide",
+      "package": "tailwindcss",
+      "major": 4,
+      "title": "Neue Engine, volle Builds bis 5×, inkrementelle über 100× schneller",
+      "source": "https://tailwindcss.com/blog/tailwindcss-v4",
+      "issues": {
+        "repo": "tailwindlabs/tailwindcss",
+        "query": "label:bug"
+      }
+    },
+    {
+      "id": "vite-8-rolldown",
+      "package": "vite",
+      "major": 8,
+      "title": "Rolldown statt Rollup, Builds 10× bis 30× schneller",
+      "source": "https://vite.dev/blog/announcing-vite8",
+      "issues": {
+        "repo": "vitejs/vite",
+        "query": "label:regression"
+      }
+    },
+    {
+      "id": "prisma-7-rust-free",
+      "package": "@prisma/client",
+      "major": 7,
+      "title": "Client ohne Rust-Engine, Queries 3× schneller, 90 % kleineres Bundle",
+      "source": "https://www.prisma.io/blog/announcing-prisma-orm-7-0-0",
+      "issues": {
+        "repo": "prisma/orm",
+        "query": "label:bug/2-confirmed"
+      }
+    },
+    {
+      "id": "prisma-cli-7-rust-free",
+      "package": "prisma",
+      "major": 7,
+      "title": "Gehört zu @prisma/client 7: Queries 3× schneller, 90 % kleineres Bundle",
+      "source": "https://www.prisma.io/blog/announcing-prisma-orm-7-0-0",
+      "issues": {
+        "repo": "prisma/orm",
+        "query": "label:bug/2-confirmed"
+      }
+    }
+  ]
+}

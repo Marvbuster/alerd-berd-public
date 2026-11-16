@@ -1,0 +1,26 @@
+# Secrets NIEMALS ins Image (Coolify injiziert Env zur Laufzeit)
+.env
+.env.*
+
+# lokale/arch-spezifische Artefakte — Builder installiert/baut frisch
+node_modules
+.next
+out
+
+# VCS & Meta
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# Doku/Sonstiges braucht das Image nicht
+.wiki
+release_notes
+README.md
+*.md
+
+# OS / Logs
+.DS_Store
+npm-debug.log*
+*.tsbuildinfo

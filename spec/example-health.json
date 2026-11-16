@@ -1,0 +1,21 @@
+{
+  "status": "degraded",
+  "version": "1.4.2",
+  "uptimeSec": 852134,
+  "timestamp": "2026-09-13T10:22:05Z",
+  "runtime": { "node": "22.11.0", "commit": "2970d7f3b1c4e5a6d7f8091a2b3c4d5e6f708192", "packages": { "next": "16.4.5" } },
+  "components": [
+    { "name": "database", "status": "ok" },
+    { "name": "redis", "status": "ok" },
+    {
+      "name": "smtp-relay",
+      "status": "degraded",
+      "detail": "Zustellung verzögert, Queue-Backlog"
+    }
+  ],
+  "metrics": [
+    { "name": "response_time", "value": 180, "unit": "ms", "warn": 500, "crit": 2000 },
+    { "name": "queue_depth", "value": 1200, "unit": "count", "warn": 1000, "crit": 5000 },
+    { "name": "free_disk", "value": 42, "unit": "%", "warn": 15, "crit": 5, "direction": "below" }
+  ]
+}

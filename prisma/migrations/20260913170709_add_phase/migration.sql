@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Monitor" ADD COLUMN     "phase" DOUBLE PRECISION NOT NULL DEFAULT 0;

@@ -1,0 +1,683 @@
+// Alerd Board — Datenmodell v1
+// Überwachungs-App: pollt Dienste (HTTP/TCP/Ping/Keyword), schreibt pro Lauf
+// ein Check-Ergebnis, öffnet/schließt Incidents bei Statuswechsel und alarmiert
+// über Kanäle (E-Mail, Web Push). Alle Zeiten UTC (DateTime).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Ein Konto. Mandant: jeder User sieht nur seine eigenen Monitore/Kanäle.
+// ADMIN verwaltet zusätzlich Nutzer + Invites. Erstellt per Invite (Signup) oder
+// per Seed aus der Env (docker-entrypoint → scripts/seed-admin.mjs).
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  name              String?
+  passwordHash      String
+  role              Role     @default(USER)
+  active            Boolean  @default(true)
+  // Tägliche, zusammengefasste Paket-Updates. Der Schalter gilt nur für E-Mail,
+  // nie für Incident- oder Push-Benachrichtigungen.
+  dailyUpdateDigest Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  monitors                Monitor[]
+  channels                AlertChannel[]
+  apiKeys                 ApiKey[]
+  invitesCreated          Invite[]                 @relation("InviteCreatedBy")
+  inviteUsed              Invite?                  @relation("InviteUsedBy")
+  passwordResets          PasswordReset[]          @relation("ResetUser")
+  resetsCreated           PasswordReset[]          @relation("ResetCreatedBy")
+  coolifyConnections      CoolifyConnection[]
+  githubCredential        GitHubCredential?
+  githubPublishCredential GitHubPublishCredential?
+  claudeCredential        ClaudeCredential?
+  localNode               LocalAnalysisNode?
+  dependencyJobs          DependencyJob[]
+  localAnalysisTasks      LocalAnalysisTask[]
+}
+
+// Einladung: ADMIN legt sie E-Mail-gebunden an, der Eingeladene löst sie über
+// /signup?code=… ein (setzt sein Passwort). Kein E-Mail-Versand — der Link wird
+// kopiert und selbst verschickt (v1).
+model Invite {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  email       String
+  role        Role      @default(USER)
+  createdById String
+  createdBy   User      @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  usedById    String?   @unique
+  usedBy      User?     @relation("InviteUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@index([email])
+}
+
+// Passwort-Reset: ADMIN legt ihn für einen bestehenden User an, der User setzt
+// über /reset?code=… ein neues Passwort. Gleiches Muster wie Invite, nur dass
+// der User schon existiert. Kein E-Mail-Versand — Link wird selbst verschickt.
+model PasswordReset {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  userId      String
+  user        User      @relation("ResetUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User      @relation("ResetCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Selbst verwalteter API-Key eines Users (gated /spec/*). Klartext `alrd_<rand>`
+// wird nur EINMAL bei der Erstellung gezeigt; gespeichert ist nur sha256hex(key)
+// (hohe Entropie → sha256 genügt, wie ingestToken). Widerruf = revokedAt setzen.
+model ApiKey {
+  id                String             @id @default(cuid())
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  prefix            String // erste Zeichen zum Wiedererkennen in der Liste (z. B. "alrd_ab12…")
+  keyHash           String             @unique
+  // Klartext des Keys, damit er jederzeit wieder kopierbar ist (nicht nur einmal).
+  // Bewusst im Klartext: der Key schützt nur den Lesezugriff auf die Spec-Guides,
+  // nichts Sensibles. Nullable für Alt-Keys, die es nur als Hash gibt.
+  secret            String?
+  createdAt         DateTime           @default(now())
+  lastUsedAt        DateTime?
+  revokedAt         DateTime?
+  localAnalysisNode LocalAnalysisNode?
+
+  @@index([userId])
+}
+
+// Ein Versand pro Besitzer, Kanal und Berliner Kalendertag. Damit darf der
+// Check-Scheduler beliebig oft laufen, ohne den Morgenbericht zu duplizieren.
+model DailyUpdateDigest {
+  id        String   @id @default(cuid())
+  ownerId   String
+  channelId String
+  day       String
+  success   Boolean
+  detail    String?
+  sentAt    DateTime @default(now())
+
+  @@unique([ownerId, channelId, day])
+  @@index([day])
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+// Ein überwachter Dienst — eine Zeile pro Health-Ziel.
+model Monitor {
+  id     String      @id @default(cuid())
+  name   String
+  kind   MonitorKind @default(HEALTH)
+  target String // HEALTH/HTTP: URL; TCP/PING: host[:port]; PUSH: Quelle (nur informativ, z. B. Coolify-Host)
+
+  // Mandant: Besitzer dieses Monitors. Nullable für die Migration der bestehenden
+  // Zeilen (Seed-Backfill setzt sie auf den Admin), in der App immer gesetzt.
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // PUSH-Spezifika: unguessbares Token im Ingest-URL-Pfad. Die Quelle (z. B.
+  // Coolify) postet Events an /api/ingest/<ingestToken> — das Token IST die Auth
+  // (Coolify-Webhooks können keinen Secret-Header setzen).
+  ingestToken String? @unique
+
+  // HTTP-Spezifika
+  method         String? @default("GET")
+  expectedStatus Int? // null = jeder 2xx zählt als UP
+  keyword        String? // KEYWORD-Check: Body muss diesen Text enthalten
+
+  // HEALTH-Spezifika (Alerd Board Health Spec, spec/alerd-health.schema.json)
+  healthPath      String? @default("/health") // an target angehängt, falls target keine volle URL ist
+  bearerToken     String? // wird als "Authorization: Bearer <token>" an die (geschützte) Health-Route gesendet
+  // Alerd-Board-seitige Fallback-Schwellen für die Antwortzeit, falls der
+  // Payload keine metrics/warn|crit mitliefert:
+  degradedAboveMs Int? // Antwortzeit ≥ Wert → DEGRADED (orange)
+  downAboveMs     Int? // Antwortzeit ≥ Wert → DOWN (rot)
+
+  // Scheduling
+  intervalSec Int     @default(60)
+  timeoutMs   Int     @default(10000)
+  enabled     Boolean @default(true)
+  phase       Float   @default(0) // Versatz im Intervall (0..1) → Checks gleichmäßig staffeln
+
+  // Denormalisierter Live-Zustand (aus dem letzten Check gepflegt) — spart die
+  // teure Aggregation über Checks beim Dashboard-Render.
+  currentStatus       CheckStatus @default(UNKNOWN)
+  stateSince          DateTime? // seit wann currentStatus unverändert ist (bei Statuswechsel gesetzt)
+  lastUpAt            DateTime? // letzter Check mit Status UP (für „letzter grüner Check")
+  lastCheckedAt       DateTime?
+  lastResponseMs      Int?
+  consecutiveFailures Int         @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checks        Check[]
+  incidents     Incident[]
+  packages      MonitorPackage[]
+  packageAlerts PackageAlertLog[]
+  coolifyLinks  MonitorCoolifyApplication[]
+
+  @@index([enabled, lastCheckedAt])
+  @@index([ownerId])
+}
+
+// Ergebnis eines einzelnen Poll-Laufs. Zeitreihe — wächst schnell, wird per
+// Retention (Roadmap) gekappt.
+model Check {
+  id             String      @id @default(cuid())
+  monitorId      String
+  monitor        Monitor     @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  checkedAt      DateTime    @default(now())
+  status         CheckStatus
+  responseTimeMs Int?
+  statusCode     Int?
+  error          String? // Fehlermeldung bei DOWN (Timeout, DNS, 5xx …)
+
+  // Snapshot der Alerd Board Health Spec-Antwort (nur bei kind HEALTH):
+  version   String? // gemeldete Dienst-Version
+  uptimeSec Int? // gemeldete Laufzeit
+  payload   Json? // vollständige geparste Health-Antwort (components, metrics)
+
+  @@index([monitorId, checkedAt])
+}
+
+// Ein Ausfall-Zeitraum: geht bei UP→DOWN auf, schließt bei DOWN→UP. Nur EIN
+// offener Incident pro Monitor gleichzeitig (Anwendungslogik).
+model Incident {
+  id             String         @id @default(cuid())
+  monitorId      String
+  monitor        Monitor        @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status         IncidentStatus @default(OPEN)
+  startedAt      DateTime       @default(now())
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  cause          String? // Snapshot des Fehlers beim Öffnen
+
+  notifications NotificationLog[]
+
+  @@index([monitorId, startedAt])
+  @@index([status])
+}
+
+// Ein Ziel, an das alarmiert wird. config hält die kanal-spezifischen Daten:
+//  - EMAIL:    { "to": "alerts@example.com" }
+//  - WEB_PUSH: { "endpoint": "…", "keys": { "p256dh": "…", "auth": "…" } }
+model AlertChannel {
+  id        String           @id @default(cuid())
+  kind      AlertChannelKind
+  label     String
+  enabled   Boolean          @default(true)
+  config    Json
+  createdAt DateTime         @default(now())
+
+  // Mandant: nur die Kanäle des Monitor-Owners werden bei dessen Incidents
+  // alarmiert (dispatchAlert filtert über ownerId). Nullable wie bei Monitor.
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  notifications NotificationLog[]
+  packageAlerts PackageAlertLog[]
+
+  @@index([ownerId])
+}
+
+// Audit-/Idempotenz-Log: welcher Kanal wurde für welchen Incident wann
+// benachrichtigt. Verhindert Doppel-Alarme bei erneuten Läufen.
+model NotificationLog {
+  id         String         @id @default(cuid())
+  incidentId String
+  incident   Incident       @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  channelId  String
+  channel    AlertChannel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  kind       AlertEventKind
+  sentAt     DateTime       @default(now())
+  success    Boolean        @default(true)
+  detail     String?
+
+  @@unique([incidentId, channelId, kind]) // ein Alarm pro Kanal+Ereignis
+  @@index([sentAt])
+}
+
+// ---------------------------------------------------------------------------
+// Versionswächter: welche Paket-Versionen laufen LIVE, und sind sie veraltet
+// oder von Advisories/bekannten Bugs betroffen? Generisch über den npm-Namen,
+// damit später React/Prisma/Node ohne Migration dazukommen (bewertet wird
+// vorerst nur "next", siehe src/lib/version-watch-logic.ts).
+// ---------------------------------------------------------------------------
+
+// Live gemeldete Version eines Pakets je Monitor, aus dem optionalen
+// runtime.packages-Feld der Spec-Health-Antwort. Meldet der Dienst das Feld
+// nicht (mehr), verschwinden seine Zeilen → Dashboard zeigt „keine Angabe".
+model MonitorPackage {
+  id          String   @id @default(cuid())
+  monitorId   String
+  monitor     Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  name        String // npm-Paketname, z. B. "next"
+  version     String // exakt gemeldete SemVer, z. B. "16.4.5"
+  firstSeenAt DateTime @default(now()) // seit wann genau diese Version läuft
+  reportedAt  DateTime @default(now()) // letzter Check, der sie gemeldet hat
+
+  @@unique([monitorId, name])
+  @@index([name])
+}
+
+// Referenzwissen pro Paket, höchstens einmal täglich aufgefrischt:
+// npm-Registry (dist-tags + Release-Daten) und GitHub Advisory Database.
+model PackageRegistry {
+  name                String    @id // npm-Paketname
+  distTags            Json? // { "latest": "16.4.5", "canary": "…", … }
+  versions            Json? // { "16.4.5": "2026-…Z", … } — nur stabile Versionen mit Release-Datum
+  npmFetchedAt        DateTime?
+  advisoriesFetchedAt DateTime?
+  lastError           String? // letzter Fehler beim Auffrischen (Anzeige, kein Abbruch)
+  // Zusatzwissen ohne npm-Form, etwa für "runtime:node": Support-Plan und Sicherheits-Releases.
+  meta                Json?
+  updatedAt           DateTime  @updatedAt
+}
+
+// Eine Advisory aus der GitHub Advisory Database für EIN Paket.
+model Advisory {
+  id          String    @id @default(cuid())
+  ghsaId      String // z. B. "GHSA-673q-mjm6-r5xr"
+  cveId       String?
+  packageName String
+  severity    String // critical | high | medium | low | unknown (GitHub-Vokabular)
+  summary     String
+  url         String
+  ranges      Json // [{ "vulnerable": ">= 16.0.0, <= 16.4.0", "firstPatched": "16.4.1" | null }]
+  publishedAt DateTime
+  withdrawnAt DateTime?
+  fetchedAt   DateTime
+
+  @@unique([ghsaId, packageName])
+  @@index([packageName])
+}
+
+// Idempotenz-Log für Advisory-Alarme: pro Monitor, Advisory und Kanal genau
+// einmal. Eigenes Log, weil NotificationLog an Incidents hängt und eine
+// Advisory kein Ausfall ist.
+model PackageAlertLog {
+  id        String       @id @default(cuid())
+  monitorId String
+  monitor   Monitor      @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  channelId String
+  channel   AlertChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  ghsaId    String
+  version   String // betroffene Version zum Alarmzeitpunkt
+  sentAt    DateTime     @default(now())
+  success   Boolean      @default(true)
+  detail    String?
+
+  @@unique([monitorId, ghsaId, channelId])
+  @@index([sentAt])
+}
+
+// Optional deployment inventory. Tokens are encrypted with a separate runtime key.
+model CoolifyConnection {
+  id              String               @id @default(cuid())
+  ownerId         String
+  owner           User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  label           String
+  baseUrl         String
+  tokenEncrypted  String
+  createdAt       DateTime             @default(now())
+  lastSyncedAt    DateTime?
+  lastAttemptAt   DateTime?
+  syncLockedUntil DateTime?
+  lastError       String?
+  applications    CoolifyApplication[]
+
+  @@unique([ownerId, baseUrl])
+}
+
+model CoolifyApplication {
+  id              String                      @id @default(cuid())
+  connectionId    String
+  connection      CoolifyConnection           @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  uuid            String
+  name            String
+  domains         String?
+  repository      String?
+  branch          String?
+  baseDirectory   String                      @default("/")
+  // API/config observation only, not a verified running commit.
+  reportedCommit  String?
+  buildPack       String?
+  status          String?
+  lastSeenAt      DateTime
+  missingSince    DateTime?
+  // Owner preference; Coolify imports must never overwrite it.
+  hiddenAt        DateTime? // veraltet seit dem Dienste-Konzept, wird nicht mehr gesetzt
+  // Als Dienst angelegt (Konzept 2026-11-11). Ohne: liegt nur im Coolify-Vorrat.
+  serviceAt       DateTime?
+  // Erstmals von Coolify geliefert, für den Hinweis „neu“ im Auswahldialog.
+  firstSeenAt     DateTime                    @default(now())
+  monitors        MonitorCoolifyApplication[]
+  repositoryWatch RepositoryWatch?
+  dependencyJobs  DependencyJob[]
+
+  @@unique([connectionId, uuid])
+}
+
+model GitHubCredential {
+  ownerId          String    @id
+  owner            User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tokenEncrypted   String
+  updatedAt        DateTime  @updatedAt
+  // Ablauf laut GitHub-Header github-authentication-token-expiration. null bei
+  // expiryCheckedAt gesetzt heißt: Token läuft nicht ab.
+  expiresAt        DateTime?
+  expiryCheckedAt  DateTime?
+  // Kleinste Warnstufe in Tagen (30, 7, 1, 0), die schon gemeldet wurde.
+  expiryWarnedDays Int?
+}
+
+// Separater Fine-grained Token mit Contents: Read and write für den finalen,
+// vom Benutzer freigegebenen Publisher. Der Claude-Prozess erhält ihn nie.
+model GitHubPublishCredential {
+  ownerId          String    @id
+  owner            User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tokenEncrypted   String
+  updatedAt        DateTime  @updatedAt
+  // Ablauf laut GitHub-Header github-authentication-token-expiration. null bei
+  // expiryCheckedAt gesetzt heißt: Token läuft nicht ab.
+  expiresAt        DateTime?
+  expiryCheckedAt  DateTime?
+  // Kleinste Warnstufe in Tagen (30, 7, 1, 0), die schon gemeldet wurde.
+  expiryWarnedDays Int?
+}
+
+// Persönlicher Claude-Code-Zugang. Der Klartext bleibt ausschließlich als
+// AES-verschlüsselter Wert in der DB und wird nur einem kurzlebigen Worker
+// für Jobs dieses Owners übergeben.
+model ClaudeCredential {
+  ownerId          String    @id
+  owner            User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tokenEncrypted   String
+  connectedAt      DateTime  @default(now())
+  lastVerifiedAt   DateTime?
+  lastError        String?
+  // claude setup-token gilt ein Jahr ab connectedAt. Kleinste schon gemeldete
+  // Warnstufe in Tagen (30, 7, 1, 0).
+  expiryWarnedDays Int?
+}
+
+// Ein persönlicher Mac kann Jobs zur reinen Analyse pollen. Der zugeordnete
+// API-Key ist absichtlich getrennt von Zugängen zu Coolify/GitHub/Claude.
+model LocalAnalysisNode {
+  ownerId    String    @id
+  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  apiKeyId   String    @unique
+  apiKey     ApiKey    @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime?
+  nodeName   String?
+  model      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+// Persistenter Verlauf eines ausschließlich freigegebenen Dependency-Updates.
+// Der Worker wird in einer späteren Ausbaustufe aktiv; der Datensatz selbst
+// enthält niemals Repository-Inhalte oder Zugangsdaten.
+model DependencyJob {
+  id                String                  @id @default(cuid())
+  ownerId           String
+  owner             User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  applicationId     String
+  application       CoolifyApplication      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  packageName       String
+  targetVersion     String
+  // Gebündeltes Update: [{ name, version, from }]. Leer = nur packageName/targetVersion.
+  packages          Json?
+  model             String                  @default("opus")
+  engine            DependencyEngine        @default(CLAUDE)
+  baseCommitSha     String?
+  claudeSessionId   String?
+  status            DependencyJobStatus     @default(DRAFT)
+  preparedPath      String?
+  diffHash          String?
+  validationLog     String?
+  approvalAt        DateTime?
+  publishApprovalAt DateTime?
+  publishedAt       DateTime?
+  // Commit, den der Worker gepusht hat. Meldet der Dienst runtime.commit, ist
+  // damit exakt belegbar, dass genau dieser Build live läuft.
+  pushedCommit      String?
+  lastError         String?
+  workerLockedUntil DateTime?
+  workerAttemptAt   DateTime?
+  // Zuletzt im Update-Chat oder im Nachrichten-Hub angesehen. Wird per Raw-SQL
+  // gesetzt, damit updatedAt (Zeitpunkt des letzten Statuswechsels) bleibt.
+  seenAt            DateTime?
+  // Teilschritte des laufenden Worker-Schritts: { steps: [{ label, startedAt,
+  // endedAt?, ok? }] }. Per Raw-SQL geschrieben, damit updatedAt bleibt.
+  progress          Json?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  messages          DependencyMessage[]
+  claudeUsage       DependencyClaudeUsage[]
+  nodeTasks         LocalAnalysisTask[]
+
+  @@index([ownerId, updatedAt])
+  @@index([applicationId, updatedAt])
+  @@index([workerLockedUntil])
+}
+
+// Die Node erhält nur diesen vorgebauten Analyse-Kontext. Sie kann nie bauen,
+// committen oder pushen; diese Tätigkeiten bleiben beim Worker auf dem Server.
+model LocalAnalysisTask {
+  id          String                  @id @default(cuid())
+  ownerId     String
+  owner       User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         DependencyJob           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase       LocalAnalysisTaskPhase
+  status      LocalAnalysisTaskStatus @default(PENDING)
+  prompt      String
+  result      String?
+  nodeName    String?
+  model       String?
+  claimedAt   DateTime?
+  leaseUntil  DateTime?
+  completedAt DateTime?
+  lastError   String?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@index([ownerId, status, createdAt])
+  @@index([jobId, phase])
+}
+
+model DependencyMessage {
+  id        String                @id @default(cuid())
+  jobId     String
+  job       DependencyJob         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  role      DependencyMessageRole
+  content   String
+  createdAt DateTime              @default(now())
+
+  @@index([jobId, createdAt])
+}
+
+// Ein Claude-CLI-Lauf je Analyse, Rückfrage oder Live-Fazit. Die Werte kommen
+// aus stream-json; fehlt das Feld in einer CLI-Antwort, bleibt reported=false
+// statt einen Verbrauch von 0 vorzutäuschen.
+model DependencyClaudeUsage {
+  id                  String                     @id @default(cuid())
+  jobId               String
+  job                 DependencyJob              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase               DependencyClaudeUsagePhase
+  model               String
+  sessionId           String?
+  inputTokens         Int?
+  outputTokens        Int?
+  cacheReadTokens     Int?
+  cacheCreationTokens Int?
+  totalTokens         Int?
+  turns               Int?
+  durationMs          Int?
+  reported            Boolean                    @default(false)
+  createdAt           DateTime                   @default(now())
+
+  @@index([jobId, createdAt])
+}
+
+enum DependencyJobStatus {
+  DRAFT
+  AWAITING_CLAUDE
+  AWAITING_NODE
+  ANALYZING
+  READY_FOR_REVIEW
+  APPROVED
+  RUNNING
+  VERIFYING
+  READY_TO_PUSH
+  PUBLISHING
+  PUSHED
+  // Nach dem Push: warten, bis der Monitor die Zielversion live meldet,
+  // dann schreibt Claude ein Fazit.
+  DEPLOYING
+  LIVE_REVIEW
+  LIVE
+  LIVE_UNVERIFIED
+  DEPLOY_FAILED
+  FAILED
+  CANCELLED
+}
+
+enum DependencyEngine {
+  CLAUDE
+  LOCAL_NODE
+}
+
+enum LocalAnalysisTaskPhase {
+  ANALYSIS
+  LIVE_REVIEW
+}
+
+enum LocalAnalysisTaskStatus {
+  PENDING
+  CLAIMED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum DependencyMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum DependencyClaudeUsagePhase {
+  ANALYSIS
+  FOLLOW_UP
+  LIVE_REVIEW
+}
+
+model RepositoryWatch {
+  id              String              @id @default(cuid())
+  applicationId   String              @unique
+  application     CoolifyApplication  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  repository      String
+  branch          String
+  manifestPath    String
+  lockfilePath    String
+  // Platzhalter für den Build in der Sandbox, eine Zeile NAME=wert. Keine Secrets.
+  buildEnv        String?
+  revision        String              @default(uuid())
+  lastAttemptAt   DateTime?
+  lastError       String?
+  syncLockedUntil DateTime?
+  snapshot        RepositorySnapshot?
+  packages        WatchedPackage[]
+}
+
+// Pakete, die du an einem Dienst beobachtest (neben next). Version kommt aus
+// runtime.packages der Spec-Health, sonst aus dem Lockfile im Git-Stand.
+model WatchedPackage {
+  id        String          @id @default(cuid())
+  watchId   String
+  watch     RepositoryWatch @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime        @default(now())
+
+  @@unique([watchId, name])
+  @@index([name])
+}
+
+model RepositorySnapshot {
+  watchId         String          @id
+  watch           RepositoryWatch @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  commitSha       String
+  // Only dependency versions and file hashes; never store source contents.
+  // next aus Manifest und Lockfile, leer bei Projekten ohne next.
+  declaredVersion String?
+  lockedVersion   String?
+  // Alle direkten Abhängigkeiten: [{ name, declared, locked, dev }]. Nur Versionen.
+  dependencies    Json?
+  manifestHash    String
+  lockfileHash    String
+  scannedAt       DateTime
+}
+
+model MonitorCoolifyApplication {
+  monitorId     String
+  monitor       Monitor            @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  applicationId String
+  application   CoolifyApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  createdAt     DateTime           @default(now())
+
+  @@id([monitorId, applicationId])
+  @@index([applicationId])
+}
+
+enum MonitorKind {
+  HEALTH // Alerd Board Health Spec: JSON-Payload wird geparst und in eine Ampel übersetzt
+  HTTP // simpler Erreichbarkeits-/Statuscode-Check
+  TCP
+  PING
+  KEYWORD
+  PUSH // wird nicht gepollt; eine Quelle pusht Events an /api/ingest/<ingestToken> (z. B. Coolify-Server)
+}
+
+enum CheckStatus {
+  UP
+  DEGRADED
+  DOWN
+  UNKNOWN
+}
+
+enum IncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum AlertChannelKind {
+  EMAIL
+  WEB_PUSH
+}
+
+enum AlertEventKind {
+  DOWN
+  RECOVERED
+}

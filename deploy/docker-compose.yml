@@ -1,0 +1,76 @@
+name: alerd
+x-app-env: &app-env
+  DATABASE_URL: postgresql://alerd:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/alerd
+  AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
+  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?Set CREDENTIAL_ENCRYPTION_KEY}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+  ALERD_PUBLIC_URL: ${ALERD_PUBLIC_URL:?Set ALERD_PUBLIC_URL}
+  RUN_CHECKS_SECRET: ${RUN_CHECKS_SECRET:?Set RUN_CHECKS_SECRET}
+  COOLIFY_ALLOWED_ORIGINS: ${COOLIFY_ALLOWED_ORIGINS:-}
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+  VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:alerts@example.com}
+  BREVO_API_KEY: ${BREVO_API_KEY:-}
+  ALERT_FROM: ${ALERT_FROM:-Alerd <alerts@example.com>}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SPEC_ACCESS_TOKEN: ${SPEC_ACCESS_TOKEN:-}
+  SPEC_HEALTH_TOKEN: ${SPEC_HEALTH_TOKEN:-}
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: alerd
+      POSTGRES_DB: alerd
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U alerd -d alerd']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  board:
+    build: ..
+    image: alerd-selfhost
+    restart: unless-stopped
+    environment: *app-env
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+  worker:
+    profiles: [worker]
+    build: ..
+    image: alerd-selfhost
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      DEPENDENCY_WORKER: '1'
+      DEPENDENCY_WORKSPACE_ROOT: /var/lib/alerd-worker
+    volumes:
+      - worker-data:/var/lib/alerd-worker
+    depends_on:
+      board:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+volumes:
+  db-data:
+  worker-data:
