@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { markDependencyJobsSeen } from "@/lib/dependency-notifications";
 import { engineLabel, TERMINAL_STATUSES } from "@/lib/dependency-phase";
 import { alreadyDelivered, isCriticalFix, jobLabel, updateMaturity } from "@/lib/dependency-target";
+import { lockfileKind } from "@/lib/repository-logic";
 import semver from "semver";
 import type { DependencyJobStatus } from "@prisma/client";
 import { expiryOrRetry } from "@/lib/credential-expiry-watch";
@@ -104,9 +105,11 @@ export async function createDependencyJob(_state: DependencyActionState, form: F
   if (new Set(wanted.map((p) => p.name)).size !== wanted.length) return { ok: false, message: _code("actions.mef497c1483") };
   const application = await prisma.coolifyApplication.findFirst({
     where: { id: applicationId, hiddenAt: null, missingSince: null, connection: { ownerId: user.id } },
-    select: { id: true, repositoryWatch: { select: { snapshot: { select: { commitSha: true, lockedVersion: true, dependencies: true } } } } },
+    select: { id: true, repositoryWatch: { select: { lockfilePath: true, snapshot: { select: { commitSha: true, lockedVersion: true, dependencies: true } } } } },
   });
   if (!application) return { ok: false, message: _code("actions.mb31a189955") };
+  // Der Worker installiert, baut und testet mit npm. pnpm-Projekte werden nur beobachtet.
+  if (application.repositoryWatch && lockfileKind(application.repositoryWatch.lockfilePath) === "pnpm") return { ok: false, message: _code("actions.m7d0b2f4a68") };
   const snapshot = application.repositoryWatch?.snapshot;
   // Nur direkte Abhängigkeiten aus dem Git-Stand, und nur nach oben.
   const deps = Array.isArray(snapshot?.dependencies) ? snapshot.dependencies as { name?: string; locked?: string | null }[] : [];

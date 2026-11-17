@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { decryptCredential, encryptCredential } from "@/lib/credentials";
 import { fetchCoolifyEnvKeys } from "@/lib/coolify-client";
 import { mergeBuildEnvNames, parseBuildEnv } from "../../../scripts/dependency-worker-lib.mjs";
-import { githubRepository, repositoryBranch, repositoryFile } from "@/lib/repository-logic";
+import { githubRepository, repositoryBranch, repositoryFile, repositoryLockfile } from "@/lib/repository-logic";
 import { scanRepository } from "@/lib/repository-watch";
 import { refreshReferenceData } from "@/lib/version-watch";
 import type { CoolifyActionState } from "./actions";
@@ -50,7 +50,7 @@ export async function saveRepository(applicationId: string, _state: CoolifyActio
       repository: githubRepository(String(form.get("repository") ?? "")),
       branch: repositoryBranch(String(form.get("branch") ?? "")),
       manifestPath: repositoryFile(String(form.get("manifestPath") ?? ""), "package.json"),
-      lockfilePath: repositoryFile(String(form.get("lockfilePath") ?? ""), "package-lock.json"),
+      lockfilePath: repositoryLockfile(String(form.get("lockfilePath") ?? "")),
     };
   } catch { return { ok: false, message: _code("actions.m0532a74fb2") }; }
   await prisma.$transaction(async (tx) => {

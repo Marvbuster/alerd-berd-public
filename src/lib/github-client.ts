@@ -1,6 +1,7 @@
 import { messageCode as _code, MessageError as _Error } from "@/i18n/translate";
 import { createHash } from "node:crypto";
-import { githubRepository, parseNpmManifest, repositoryBranch, repositoryFile } from "./repository-logic";
+import { parse as parseYaml } from "yaml";
+import { githubRepository, lockfileKind, parseRepositoryManifest, repositoryBranch, repositoryFile, repositoryLockfile } from "./repository-logic";
 import { parseGitHubExpiration } from "./credential-expiry";
 
 async function get(path: string, token: string | null, raw = false): Promise<string> {
@@ -41,17 +42,24 @@ function json(text: string): unknown {
   try { return JSON.parse(text); } catch { throw new _Error("validation.m4a70b45ba6"); }
 }
 
+// pnpm-lock.yaml kennt keine Anker; Aliasse sind abgeschaltet, damit eine
+// präparierte Datei nicht exponentiell wächst.
+function yaml(text: string): unknown {
+  try { return parseYaml(text, { maxAliasCount: 0 }); } catch { throw new _Error("validation.m1a3c5e7f94"); }
+}
+
 export async function fetchRepositoryDependencies(config: { repository: string; branch: string; manifestPath: string; lockfilePath: string }, token: string | null) {
   const repo = githubRepository(config.repository).split("/").map(encodeURIComponent).join("/");
   const branch = repositoryBranch(config.branch);
   const manifestPath = repositoryFile(config.manifestPath, "package.json");
-  const lockfilePath = repositoryFile(config.lockfilePath, "package-lock.json");
+  const lockfilePath = repositoryLockfile(config.lockfilePath);
   const ref = json(await get(`/repos/${repo}/git/ref/heads/${branch.split("/").map(encodeURIComponent).join("/")}`, token)) as { ref?: string; object?: { type?: string; sha?: string } } | null;
   const sha = ref?.object?.sha;
   if (ref?.ref !== `refs/heads/${branch}` || ref?.object?.type !== "commit" || typeof sha !== "string" || !/^[a-f0-9]{40}$/i.test(sha)) throw new _Error("validation.m30dcafa9c8");
   const path = (file: string) => `/repos/${repo}/contents/${file.split("/").map(encodeURIComponent).join("/")}?ref=${sha}`;
   const [manifest, lockfile] = await Promise.all([get(path(manifestPath), token, true), get(path(lockfilePath), token, true)]);
-  const parsed = parseNpmManifest(json(manifest), json(lockfile), manifestPath, lockfilePath);
+  const lockData = lockfileKind(lockfilePath) === "pnpm" ? yaml(lockfile) : json(lockfile);
+  const parsed = parseRepositoryManifest(json(manifest), lockData, manifestPath, lockfilePath);
   const hash = (text: string) => createHash("sha256").update(text).digest("hex");
   return { commitSha: sha, ...parsed, manifestHash: hash(manifest), lockfileHash: hash(lockfile) };
 }
