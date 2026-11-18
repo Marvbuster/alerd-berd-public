@@ -40,22 +40,56 @@ export function repositoryPath(value, label, filename) {
   return path;
 }
 
+export const LOCKFILES = ["package-lock.json", "pnpm-lock.yaml"];
+
+export function lockfileKind(path) {
+  return path.endsWith("/pnpm-lock.yaml") || path === "pnpm-lock.yaml" ? "pnpm" : "npm";
+}
+
 export function safeWatch(watch) {
+  const lockfilePath = String(watch.lockfilePath ?? "").replaceAll("\\", "/").replace(/^\.\//, "");
+  const lockfile = LOCKFILES.find((name) => lockfilePath === name || lockfilePath.endsWith(`/${name}`));
+  if (!lockfile) throw new MessageError("worker.invalidLockfile");
   return {
     ...watch,
     branch: gitBranch(watch.branch),
     manifestPath: repositoryPath(watch.manifestPath, "Manifest", "package.json"),
-    lockfilePath: repositoryPath(watch.lockfilePath, "Lockfile", "package-lock.json"),
+    lockfilePath: repositoryPath(watch.lockfilePath, "Lockfile", lockfile),
   };
 }
 
 export function packageDir(watch, _locale = "de") {
   const manifestDir = dirname(watch.manifestPath);
-  if (dirname(watch.lockfilePath) !== manifestDir) throw new MessageError("worker.med26155dee");
+  const lockDir = dirname(watch.lockfilePath);
+  if (lockfileKind(watch.lockfilePath) === "npm" && lockDir !== manifestDir) throw new MessageError("worker.med26155dee");
+  if (lockfileKind(watch.lockfilePath) === "pnpm" && lockDir !== "." && manifestDir !== lockDir && !manifestDir.startsWith(`${lockDir}/`)) throw new MessageError("worker.med26155dee");
   return manifestDir === "." ? "" : manifestDir;
 }
 
+// pnpm-Workspaces lösen das Lockfile an ihrer Wurzel auf. Skripte laufen
+// trotzdem gezielt nur im beobachteten Paket.
+export function workspaceDir(watch, _locale = "de") {
+  packageDir(watch, _locale);
+  const dir = dirname(watch.lockfilePath);
+  return dir === "." ? "" : dir;
+}
+
 export function npmArgs(dir, args) { return dir ? ["--prefix", dir, ...args] : args; }
+
+export function pnpmArgs(watch, args, { inPackage = false } = {}) {
+  const root = workspaceDir(watch);
+  const app = packageDir(watch);
+  const relative = root ? app.slice(root.length).replace(/^\//, "") : app;
+  return [...(root ? ["--dir", root] : []), ...(inPackage && relative ? ["--filter", `./${relative}`] : []), ...args];
+}
+
+export function pnpmPackageManager(manifests, _locale = "de") {
+  for (const manifest of manifests) {
+    const value = manifest?.packageManager;
+    if (typeof value === "string" && /^pnpm@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(value)) return value;
+  }
+  throw new MessageError("worker.pnpmPackageManager");
+}
 
 export function diffHash(diff) { return createHash("sha256").update(diff).digest("hex"); }
 
@@ -579,6 +613,17 @@ export function npmStepLabel(stage, args, _locale = "de") {
   else if (clean[0] === "install" && clean.includes("--package-lock-only")) what = _t(_locale, "worker.lockfileUpdate");
   else if (clean[0] === "exec" && clean.includes("prisma") && clean.includes("generate")) what = "prisma generate";
   else what = `npm ${clean.join(" ")}`;
+  return stage ? `${stage}: ${what}` : what;
+}
+
+export function pnpmStepLabel(stage, args, _locale = "de") {
+  const clean = args.filter((a) => a !== "--ignore-scripts");
+  let what;
+  if (clean[0] === "install" && clean.includes("--frozen-lockfile")) what = "pnpm install";
+  else if (clean[0] === "run") what = `pnpm run ${clean[1]}`;
+  else if (clean[0] === "update" && clean.includes("--lockfile-only")) what = _t(_locale, "worker.lockfileUpdate");
+  else if (clean[0] === "exec" && clean.includes("prisma") && clean.includes("generate")) what = "prisma generate";
+  else what = `pnpm ${clean.join(" ")}`;
   return stage ? `${stage}: ${what}` : what;
 }
 

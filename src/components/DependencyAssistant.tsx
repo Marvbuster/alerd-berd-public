@@ -267,7 +267,7 @@ export function DependencyAssistant({ applicationId, applicationName, candidates
         {job.messages.length > 0 && job.status !== "CANCELLED" && <div className="dependency-messages" ref={messagesRef}>{job.messages.map((message, index) => {
             // Nach der Freigabe ist die Analyse erledigt: eingeklappt, mit Risiko als Zeile.
             const assistantName = engineLabel(job.engine, _locale);
-            if (message.role === "ASSISTANT" && ((pastReview && index !== verdictIndex) || index < lastSystem)) return <details key={message.id} className="dependency-message dependency-message--assistant dependency-collapsed"><summary><Sender name={assistantName} at={message.createdAt} />{analysisSummary(message.content, _locale)}</summary><Markdown text={message.content} /></details>;
+            if (message.role === "ASSISTANT" && ((pastReview && index !== verdictIndex) || index < lastSystem)) return <details key={message.id} className="dependency-message dependency-message--assistant dependency-collapsed"><summary><Sender name={assistantName} at={message.createdAt} /><span className="dependency-collapsed-summary">{analysisSummary(message.content, _locale)}</span></summary><Markdown text={message.content} /></details>;
             // Sichere Analyse vor der Freigabe: nur die Empfehlung, die ganze Analyse eingeklappt.
             const verdict = message.role === "ASSISTANT" && job.status === "READY_FOR_REVIEW" && index === lastAssistant ? analysisRecommendation(message.content) : null;
             if (verdict?.safe && verdict.recommendation) return <div key={message.id} className="dependency-message dependency-message--assistant"><Sender name={assistantName} at={message.createdAt} />

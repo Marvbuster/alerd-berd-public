@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  baselineHint, lockstepDrift, lockstepHint, needsPrismaGenerate, sandboxScripts, changedTypeNames, wordHits, npmResolveHint, clip, bumpKind, changelogSection, versionFromTag, importPatterns, parseGrepCounts, nextRelevantFiles, pickSourceFiles, typesTarget, changedTypeFiles, claudeArgs, commitSha, dependencyPushText, evaluateLive, jobLabel, jobPackages, validateManifestChanges, gitBranch, healthUrls, probeText, githubUrl, jobUids, liveFactsText, mergeBuildEnvNames, modelArg, packageDir, parseBuildEnv, parseStream, placeholderFor, repositoryPath, validateManifestChange,
+  baselineHint, lockstepDrift, lockstepHint, needsPrismaGenerate, sandboxScripts, changedTypeNames, wordHits, npmResolveHint, clip, bumpKind, changelogSection, versionFromTag, importPatterns, parseGrepCounts, nextRelevantFiles, pickSourceFiles, typesTarget, changedTypeFiles, claudeArgs, commitSha, dependencyPushText, evaluateLive, jobLabel, jobPackages, validateManifestChanges, gitBranch, healthUrls, probeText, githubUrl, jobUids, liveFactsText, mergeBuildEnvNames, modelArg, packageDir, workspaceDir, pnpmArgs, pnpmPackageManager, pnpmStepLabel, safeWatch, lockfileKind, parseBuildEnv, parseStream, placeholderFor, repositoryPath, validateManifestChange,
 } from "../../scripts/dependency-worker-lib.mjs";
 
 const pkg = (deps: Record<string, string>, extra: Record<string, unknown> = {}) =>
@@ -47,6 +47,24 @@ describe("Eingaben aus Coolify/GitHub", () => {
     expect(packageDir({ manifestPath: "admin/package.json", lockfilePath: "admin/package-lock.json" })).toBe("admin");
     expect(packageDir({ manifestPath: "package.json", lockfilePath: "package-lock.json" })).toBe("");
     expect(() => packageDir({ manifestPath: "admin/package.json", lockfilePath: "package-lock.json" })).toThrow();
+    expect(safeWatch({ branch: "main", manifestPath: "admin/package.json", lockfilePath: "admin/package-lock.json" })).toMatchObject({ lockfilePath: "admin/package-lock.json" });
+  });
+
+  it("erlaubt pnpm-Workspaces nur unter ihrer Lockfile-Wurzel", () => {
+    const watch = safeWatch({ branch: "main", manifestPath: "apps/web/package.json", lockfilePath: "pnpm-lock.yaml" });
+    expect(lockfileKind(watch.lockfilePath)).toBe("pnpm");
+    expect(packageDir(watch)).toBe("apps/web");
+    expect(workspaceDir(watch)).toBe("");
+    expect(pnpmArgs(watch, ["run", "typecheck"], { inPackage: true })).toEqual(["--filter", "./apps/web", "run", "typecheck"]);
+    expect(() => packageDir({ manifestPath: "apps/web/package.json", lockfilePath: "admin/pnpm-lock.yaml" })).toThrow();
+    expect(() => safeWatch({ branch: "main", manifestPath: "package.json", lockfilePath: "yarn.lock" })).toThrow();
+  });
+
+  it("pinnt Corepack auf die deklarierte pnpm-Version", () => {
+    expect(pnpmPackageManager([{ packageManager: "pnpm@10.18.0" }])).toBe("pnpm@10.18.0");
+    expect(pnpmPackageManager([{ packageManager: "npm@11.0.0" }, { packageManager: "pnpm@9.15.9+sha512.abc" }])).toBe("pnpm@9.15.9+sha512.abc");
+    expect(() => pnpmPackageManager([{}])).toThrow(/packageManager/);
+    expect(pnpmStepLabel("Mit Update", ["update", "next@16.4.6", "--lockfile-only"])).toMatch(/Lockfile/);
   });
 });
 

@@ -7,6 +7,7 @@
 import semver from "semver";
 import { recipientLocale, translate } from "../../scripts/i18n.mjs";
 import { prisma } from "./prisma";
+import { decodeStream, extractTopLevel } from "./npm-packument";
 import recommendedMajorsData from "@/data/recommended-majors.json";
 import type { RecommendedMajor } from "./dependency-target";
 import { issueSearchQuery, issueSearchUrl, majorReleaseDate, parseIssueSearch, type MajorIssues } from "./major-issues";
@@ -46,16 +47,17 @@ function isStale(at: Date | null | undefined, now: number, maxAgeMs = REFRESH_EV
   return !at || now - at.getTime() > maxAgeMs;
 }
 
-// npm-Packument (komprimiert ~2,4 MB für next) → dist-tags + Release-Daten der
-// stabilen Versionen. Nur die volle Variante enthält `time`.
+// npm-Packument → dist-tags + Release-Daten der stabilen Versionen. Nur die volle
+// Variante enthält `time`; sie ist aber riesig (@prisma/client ~69 MB), deshalb
+// gestreamt und nur die zwei Felder gepuffert (npm-packument.ts).
 async function fetchNpm(name: string) {
   const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`, {
     headers: { accept: "application/json", "user-agent": "alerd-board" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`npm ${res.status}`);
-  const doc = (await res.json()) as { "dist-tags"?: Record<string, string>; time?: Record<string, string> };
+  if (!res.ok || !res.body) throw new Error(`npm ${res.status}`);
+  const doc = (await extractTopLevel(decodeStream(res.body))) as { "dist-tags"?: Record<string, string>; time?: Record<string, string> };
   const versions: Record<string, string> = {};
   for (const [v, t] of Object.entries(doc.time ?? {})) {
     if (semver.valid(v) && !semver.prerelease(v)) versions[v] = t;

@@ -20,10 +20,23 @@ export function repositoryBranch(input: string): string {
   return value;
 }
 
-export function repositoryFile(input: string, name: "package.json" | "package-lock.json"): string {
+export const LOCKFILES = ["package-lock.json", "pnpm-lock.yaml"] as const;
+export type LockfileName = (typeof LOCKFILES)[number];
+
+export function repositoryFile(input: string, name: "package.json" | LockfileName): string {
   const value = input.trim();
   if (value.length > 500 || /[\\\x00-\x1f]/.test(value) || value.split("/").some((p) => !p || p === "." || p === "..") || value.split("/").at(-1) !== name) throw new _Error("validation.mea2201abc5", { value0: name });
   return value;
+}
+
+// Lockfile von npm oder pnpm. Der Dateiname entscheidet, welcher Parser greift.
+export function repositoryLockfile(input: string): string {
+  const name = LOCKFILES.find((file) => input.trim().split("/").at(-1) === file) ?? "package-lock.json";
+  return repositoryFile(input, name);
+}
+
+export function lockfileKind(lockfilePath: string): "npm" | "pnpm" {
+  return lockfilePath.split("/").at(-1) === "pnpm-lock.yaml" ? "pnpm" : "npm";
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -44,6 +57,31 @@ function declaration(manifest: Record<string, unknown>): string | null {
   return values[0] as string;
 }
 
+// Pfad der App relativ zur Lockfile-Wurzel, "" für die Wurzel selbst.
+function appRelative(manifestPath: string, lockfilePath: string, lockfileName: LockfileName): string {
+  const appDir = manifestPath.slice(0, -"package.json".length);
+  const lockDir = lockfilePath.slice(0, -lockfileName.length);
+  if (!appDir.startsWith(lockDir)) throw new _Error("validation.mc64684c38f");
+  return appDir.slice(lockDir.length).replace(/\/$/, "");
+}
+
+// undefined = nicht im Lockfile, null = vorhanden, aber nicht eindeutig (Link, keine SemVer).
+type Resolve = (name: string) => string | null | undefined;
+
+// Gemeinsamer Rest für npm und pnpm: alle direkten Abhängigkeiten, und wenn
+// next drinsteht, muss es eindeutig zur Angabe im Manifest passen.
+function resolveManifest(manifest: Record<string, unknown>, lockedDeclaration: () => string | null, resolve: Resolve, notFound: string) {
+  const declared = declaration(manifest);
+  const dependencies = directDependencies(manifest, resolve);
+  if (declared === null) return { declaredVersion: null, lockedVersion: null, dependencies };
+  if (lockedDeclaration() !== declared) throw new _Error("validation.md16e30f88c");
+  const locked = resolve("next");
+  if (locked === undefined) throw new _Error(notFound);
+  if (locked === null) throw new _Error("validation.mb7a59f8226");
+  if (!semver.satisfies(locked, declared, { includePrerelease: true })) throw new _Error("validation.me6d385c81c");
+  return { declaredVersion: declared, lockedVersion: locked, dependencies };
+}
+
 // Liest Manifest und npm-Lockfile: alle direkten Abhängigkeiten mit gelockter
 // Version. next ist optional; steht es drin, muss es eindeutig auflösbar sein.
 export function parseNpmManifest(manifestData: unknown, lockData: unknown, manifestPath: string, lockfilePath: string) {
@@ -52,28 +90,16 @@ export function parseNpmManifest(manifestData: unknown, lockData: unknown, manif
   const lock = object(lockData);
   if (typeof manifest.packageManager === "string" && !manifest.packageManager.startsWith("npm@")) throw new _Error("validation.m6f4ec91e2a");
   if (lock.lockfileVersion !== 2 && lock.lockfileVersion !== 3) throw new _Error("validation.me45cff542d");
-  const appDir = manifestPath.slice(0, -"package.json".length);
-  const lockDir = lockfilePath.slice(0, -"package-lock.json".length);
-  if (!appDir.startsWith(lockDir)) throw new _Error("validation.mc64684c38f");
-  const relative = appDir.slice(lockDir.length).replace(/\/$/, "");
+  const relative = appRelative(manifestPath, lockfilePath, "package-lock.json");
   const packages = object(lock.packages);
   const lockedManifest = object(packages[relative]);
-  const declared = declaration(manifest);
-  const dependencies = directDependencies(manifest, packages, relative);
-  if (declared === null) return { declaredVersion: null, lockedVersion: null, dependencies };
-  if (declaration(lockedManifest) !== declared) throw new _Error("validation.md16e30f88c");
-  const locked = lockedVersionOf(packages, relative, "next");
-  if (locked === undefined) throw new _Error("validation.ma5c6bd0608");
-  if (locked === null) throw new _Error("validation.mb7a59f8226");
-  if (!semver.satisfies(locked, declared, { includePrerelease: true })) throw new _Error("validation.me6d385c81c");
-  return { declaredVersion: declared, lockedVersion: locked, dependencies };
+  return resolveManifest(manifest, () => declaration(lockedManifest), (name) => lockedVersionOf(packages, relative, name), "validation.ma5c6bd0608");
 }
 
 /** @deprecated Name aus der Zeit, als nur next gelesen wurde. */
 export const parseNpmNext = parseNpmManifest;
 
 // Node resolves a dependency nearest to the app first, then through ancestors.
-// undefined = nicht im Lockfile, null = vorhanden, aber nicht eindeutig (Link, keine SemVer).
 function lockedVersionOf(packages: Record<string, unknown>, relative: string, name: string): string | null | undefined {
   const parts = relative ? relative.split("/") : [];
   while (true) {
@@ -87,17 +113,70 @@ function lockedVersionOf(packages: Record<string, unknown>, relative: string, na
   }
 }
 
+const DEPENDENCY_GROUPS = ["dependencies", "optionalDependencies", "devDependencies"] as const;
+
+// Eintrag einer direkten Abhängigkeit im pnpm-Importer: { specifier, version }.
+function pnpmEntry(importer: Record<string, unknown>, name: string): Record<string, unknown> | undefined {
+  for (const key of DEPENDENCY_GROUPS) {
+    const group = importer[key];
+    if (!group || typeof group !== "object" || Array.isArray(group)) continue;
+    const entry = (group as Record<string, unknown>)[name];
+    if (entry !== undefined) return object(entry);
+  }
+  return undefined;
+}
+
+// pnpm hängt aufgelöste Peers an die Version: 16.4.6(react@19.2.4). Links
+// (link:, file:) und Aliasse haben keine eindeutige SemVer und ergeben null.
+function pnpmLockedVersion(importer: Record<string, unknown>, name: string): string | null | undefined {
+  const entry = pnpmEntry(importer, name);
+  if (!entry) return undefined;
+  if (typeof entry.version !== "string") return null;
+  const version = entry.version.replace(/\(.*$/, "");
+  return semver.valid(version) ? version : null;
+}
+
+// Liest Manifest und pnpm-lock.yaml (lockfileVersion 6 bis 9, also pnpm 8 bis 10).
+// lockData ist das bereits geparste YAML. Im Workspace steht jede App unter
+// importers mit ihrem Pfad ab Lockfile-Wurzel, die Wurzel selbst unter ".".
+export function parsePnpmManifest(manifestData: unknown, lockData: unknown, manifestPath: string, lockfilePath: string) {
+  repositoryFile(manifestPath, "package.json"); repositoryFile(lockfilePath, "pnpm-lock.yaml");
+  const manifest = object(manifestData);
+  const lock = object(lockData);
+  if (typeof manifest.packageManager === "string" && !manifest.packageManager.startsWith("pnpm@")) throw new _Error("validation.m3f1c9a7d21");
+  const major = Number.parseInt(String(lock.lockfileVersion ?? ""), 10);
+  if (!(major >= 6 && major <= 9)) throw new _Error("validation.m8b2e4d6f10");
+  const relative = appRelative(manifestPath, lockfilePath, "pnpm-lock.yaml");
+  // Ohne Workspace stehen die Abhängigkeiten in Version 6 direkt auf oberster Ebene.
+  const importers = lock.importers === undefined ? (relative ? {} : { ".": lock }) : object(lock.importers);
+  const raw = importers[relative || "."];
+  if (raw === undefined) throw new _Error("validation.m5c7a9e1b32", { value0: relative || "." });
+  const importer = object(raw);
+  const lockedDeclaration = () => {
+    const specifier = pnpmEntry(importer, "next")?.specifier;
+    return typeof specifier === "string" ? specifier : null;
+  };
+  return resolveManifest(manifest, lockedDeclaration, (name) => pnpmLockedVersion(importer, name), "validation.md4e6f8a0c2");
+}
+
+// lockData: JSON bei npm, geparstes YAML bei pnpm.
+export function parseRepositoryManifest(manifestData: unknown, lockData: unknown, manifestPath: string, lockfilePath: string) {
+  return lockfileKind(lockfilePath) === "pnpm"
+    ? parsePnpmManifest(manifestData, lockData, manifestPath, lockfilePath)
+    : parseNpmManifest(manifestData, lockData, manifestPath, lockfilePath);
+}
+
 export type DirectDependency = { name: string; declared: string; locked: string | null; dev: boolean };
 
 // Alle direkten Abhängigkeiten mit Angabe und gelockter Version, höchstens 300.
-function directDependencies(manifest: Record<string, unknown>, packages: Record<string, unknown>, relative: string): DirectDependency[] {
+function directDependencies(manifest: Record<string, unknown>, resolve: Resolve): DirectDependency[] {
   const out = new Map<string, DirectDependency>();
   for (const [key, dev] of [["dependencies", false], ["optionalDependencies", false], ["devDependencies", true]] as const) {
     const group = manifest[key];
     if (!group || typeof group !== "object" || Array.isArray(group)) continue;
     for (const [name, value] of Object.entries(group as Record<string, unknown>)) {
       if (out.has(name) || typeof value !== "string" || !/^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(name) || value.length > 200) continue;
-      out.set(name, { name, declared: value, locked: lockedVersionOf(packages, relative, name) ?? null, dev });
+      out.set(name, { name, declared: value, locked: resolve(name) ?? null, dev });
     }
   }
   return [...out.values()].slice(0, 300).sort((a, b) => Number(a.dev) - Number(b.dev) || a.name.localeCompare(b.name));

@@ -24,6 +24,19 @@ describe("GitHub fixed-origin reads", () => {
       if (url.includes("/contents/")) expect(url).toContain(`?ref=${sha}`);
     }
   });
+  it("parses pnpm-lock.yaml as YAML and refuses YAML aliases", async () => {
+    const manifest = { dependencies: { next: "^16.4.5" } };
+    const lock = ["lockfileVersion: '9.0'", "", "importers:", "", "  apps/web:", "    dependencies:", "      next:", "        specifier: ^16.4.5", "        version: 16.4.6(react@19.2.4)", ""].join("\n");
+    const reply = (lockText: string) => vi.fn(async (url: string) => {
+      if (url.includes("/git/ref/")) return Response.json({ ref: "refs/heads/release/stable", object: { type: "commit", sha } });
+      if (url.includes("pnpm-lock.yaml")) return new Response(lockText);
+      return Response.json(manifest);
+    });
+    vi.stubGlobal("fetch", reply(lock));
+    expect(await fetchRepositoryDependencies({ ...config, lockfilePath: "pnpm-lock.yaml" }, null)).toMatchObject({ declaredVersion: "^16.4.5", lockedVersion: "16.4.6" });
+    vi.stubGlobal("fetch", reply("a: &x [1]\nb: *x\n"));
+    await expect(fetchRepositoryDependencies({ ...config, lockfilePath: "pnpm-lock.yaml" }, null)).rejects.toThrow("YAML");
+  });
   it("rejects malformed branch observations and paths before reading contents", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({ ref: "refs/heads/other", object: { type: "commit", sha } }));
     vi.stubGlobal("fetch", fetcher);

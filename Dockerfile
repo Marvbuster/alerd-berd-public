@@ -29,7 +29,7 @@ FROM node:24-alpine AS runtime-deps
 WORKDIR /app
 COPY package-lock.json ./
 RUN node -e "const l = require('./package-lock.json').packages; \
-const pick = ['prisma', '@prisma/client', 'web-push', 'semver', 'bcryptjs', 'intl-messageformat']; \
+const pick = ['prisma', '@prisma/client', 'web-push', 'semver', 'bcryptjs', 'intl-messageformat', 'yaml']; \
 const dependencies = Object.fromEntries(pick.map((n) => [n, l['node_modules/' + n].version])); \
 require('fs').writeFileSync('package.json', JSON.stringify({ name: 'alerd-runtime', private: true, dependencies }));" \
  && npm install --omit=dev --no-package-lock --no-audit --no-fund && npm cache clean --force

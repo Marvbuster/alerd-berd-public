@@ -26,8 +26,7 @@ function updateTitle(c: UpdateCandidate, _locale: string = "de"): string | undef
   return [(c.recommended ? localizedTitle(c.recommended, _locale) : undefined), ...(c.knownIssues ?? []).map((k) => _t(_locale, "ServicePackages.mc50aa5ed90", { value0: localizedTitle(k, _locale) }))].filter(Boolean).join("\n") || undefined;
 }
 
-// Beobachtete Pakete, next eingeschlossen: eine Zeile pro Paket, Version rechts, Stufe als
-// Chip nur bei Handlungsbedarf. Darunter die Auswahl aus allen Abhängigkeiten.
+// Paketzeile: Version rechts, Stufe als Chip bei Handlungsbedarf.
 export function PackageRow({ pkg, label }: { pkg: ServicePackage; label?: string }) {
   const _locale = _useLocale();
   // Patch-Rückstand steht schon als „↑ Version“ in der Zeile, hier nur echte Meldungen.
@@ -55,9 +54,14 @@ export function ServicePackages({ applicationId, packages, dependencies, scanned
 }) {
   const _locale = _useLocale();
   const [open, setOpen] = useState(false);
+  // Nur Pakete mit Handlungsbedarf: ein Update, ein Patch-Rückstand oder ein ernster
+  // Befund. Aktuelle Pakete ohne Meldung verlängern die Seitenleiste nur.
+  const flaggedPackages = packages.filter((pkg) => !!pkg.update || !!pkg.latestPatch || pkg.level === "red" || pkg.level === "orange");
   return <div className="mt-5">
     <h4 className="service-subhead">{_t(_locale, "ServicePackages.me1a11ce2f7")}</h4>
-    {packages.length > 0 && <dl className="service-facts">{packages.map((p) => <PackageRow key={p.name} pkg={p} />)}</dl>}
+    {flaggedPackages.length > 0
+      ? <dl className="service-facts">{flaggedPackages.map((p) => <PackageRow key={p.name} pkg={p} />)}</dl>
+      : packages.length > 0 && <p className="service-hint">{_t(_locale, "ServicePackages.noFindings")}</p>}
     {!readOnly && (!scanned ? <p className="service-hint">{_t(_locale, "ServicePackages.m32292f2de0")}</p>
       : <button type="button" className="btn btn--ghost mt-3" onClick={() => setOpen(true)}>{_t(_locale, "ServicePackages.m6240951655")}</button>)}
     {open && <PackagePicker applicationId={applicationId} watched={packages.map((p) => p.name)} dependencies={dependencies} onClose={() => setOpen(false)} />}

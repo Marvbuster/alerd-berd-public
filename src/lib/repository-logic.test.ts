@@ -1,6 +1,6 @@
 import { german } from "@/test/messages";
 import { describe, expect, it } from "vitest";
-import { githubRepository, repositoryBranch, repositoryFile, parseNpmManifest, parseNpmNext, compareRuntime } from "./repository-logic";
+import { githubRepository, repositoryBranch, repositoryFile, repositoryLockfile, lockfileKind, parseNpmManifest, parseNpmNext, parsePnpmManifest, parseRepositoryManifest, compareRuntime } from "./repository-logic";
 
 const manifest = { dependencies: { next: "^16.4.5" } };
 const pkg = { version: "16.4.6" };
@@ -51,6 +51,67 @@ describe("repository paths and npm resolution", () => {
     expect(parseNpmNext(manifest, rootLock(), "admin/package.json", "admin/package-lock.json").lockedVersion).toBe("16.4.6");
     expect(() => parseNpmNext(manifest, rootLock(), "admin2/package.json", "admin/package-lock.json")).toThrow("innerhalb");
     expect(() => parseNpmNext(manifest, { lockfileVersion: 3, packages: { "": manifest, "node_modules/next": { link: true, resolved: "workspace-next" } } }, "package.json", "package-lock.json")).toThrow("nicht eindeutig");
+  });
+});
+
+describe("pnpm-lock.yaml", () => {
+  // So steht es nach dem YAML-Parsen in einer pnpm-9-Workspace-Lockfile.
+  const webManifest = { dependencies: { next: "^16.4.5", "@acme/api": "workspace:*" }, devDependencies: { vitest: "^4" } };
+  const workspaceLock = () => ({
+    lockfileVersion: "9.0",
+    importers: {
+      ".": { devDependencies: { typescript: { specifier: "^5", version: "5.9.3" } } },
+      "apps/web": {
+        dependencies: {
+          next: { specifier: "^16.4.5", version: "16.4.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)" },
+          "@acme/api": { specifier: "workspace:*", version: "link:../../packages/api" },
+        },
+        devDependencies: { vitest: { specifier: "^4", version: "4.1.11(@types/node@22.10.0)" } },
+      },
+    },
+  });
+
+  it("accepts both lockfile names and tells them apart", () => {
+    expect(repositoryLockfile("pnpm-lock.yaml")).toBe("pnpm-lock.yaml");
+    expect(repositoryLockfile(" apps/admin/package-lock.json ")).toBe("apps/admin/package-lock.json");
+    for (const path of ["yarn.lock", "../pnpm-lock.yaml", "pnpm-lock.yml", "a//pnpm-lock.yaml"]) expect(() => repositoryLockfile(path)).toThrow();
+    expect(lockfileKind("pnpm-lock.yaml")).toBe("pnpm");
+    expect(lockfileKind("apps/web/package-lock.json")).toBe("npm");
+  });
+
+  it("reads a workspace app by its importer path and strips peer suffixes", () => {
+    expect(parsePnpmManifest({ ...webManifest, packageManager: "pnpm@10.18.0" }, workspaceLock(), "apps/web/package.json", "pnpm-lock.yaml")).toEqual({
+      declaredVersion: "^16.4.5", lockedVersion: "16.4.6",
+      dependencies: [
+        { name: "@acme/api", declared: "workspace:*", locked: null, dev: false },
+        { name: "next", declared: "^16.4.5", locked: "16.4.6", dev: false },
+        { name: "vitest", declared: "^4", locked: "4.1.11", dev: true },
+      ],
+    });
+  });
+
+  it("reads the workspace root and a pnpm 8 lockfile without importers", () => {
+    expect(parsePnpmManifest({ devDependencies: { typescript: "^5" } }, workspaceLock(), "package.json", "pnpm-lock.yaml").dependencies)
+      .toEqual([{ name: "typescript", declared: "^5", locked: "5.9.3", dev: true }]);
+    const single = { lockfileVersion: "6.0", dependencies: { next: { specifier: "^16.4.5", version: "16.4.6" } } };
+    expect(parsePnpmManifest({ dependencies: { next: "^16.4.5" } }, single, "package.json", "pnpm-lock.yaml")).toMatchObject({ lockedVersion: "16.4.6" });
+    expect(() => parsePnpmManifest({ dependencies: { next: "^16.4.5" } }, single, "apps/web/package.json", "pnpm-lock.yaml")).toThrow("fehlt im pnpm-Lockfile");
+  });
+
+  it("rejects foreign package managers, old lockfiles and contradictions", () => {
+    expect(() => parsePnpmManifest({ ...webManifest, packageManager: "npm@10" }, workspaceLock(), "apps/web/package.json", "pnpm-lock.yaml")).toThrow("pnpm-Projekt");
+    expect(() => parsePnpmManifest(webManifest, { ...workspaceLock(), lockfileVersion: 5.4 }, "apps/web/package.json", "pnpm-lock.yaml")).toThrow("6 bis 9");
+    expect(() => parsePnpmManifest(webManifest, workspaceLock(), "apps/docs/package.json", "pnpm-lock.yaml")).toThrow("apps/docs");
+    expect(() => parsePnpmManifest({ dependencies: { next: "^16.5.0" } }, workspaceLock(), "apps/web/package.json", "pnpm-lock.yaml")).toThrow("unterschiedliche");
+    const linked = workspaceLock();
+    linked.importers["apps/web"].dependencies.next.version = "link:../../vendor/next";
+    expect(() => parsePnpmManifest(webManifest, linked, "apps/web/package.json", "pnpm-lock.yaml")).toThrow("nicht eindeutig");
+    expect(() => parsePnpmManifest(webManifest, workspaceLock(), "apps/web/package.json", "admin/pnpm-lock.yaml")).toThrow("innerhalb");
+  });
+
+  it("dispatches by lockfile name", () => {
+    expect(parseRepositoryManifest(webManifest, workspaceLock(), "apps/web/package.json", "pnpm-lock.yaml").lockedVersion).toBe("16.4.6");
+    expect(parseRepositoryManifest(manifest, rootLock(), "package.json", "package-lock.json").lockedVersion).toBe("16.4.6");
   });
 });
 

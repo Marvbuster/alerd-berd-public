@@ -40,7 +40,7 @@ describe("createDependencyJob", () => {
     return data;
   };
   beforeEach(() => {
-    mocks.app.findFirst.mockResolvedValue({ id: "app1", repositoryWatch: { snapshot: { commitSha: "abc1234" } } });
+    mocks.app.findFirst.mockResolvedValue({ id: "app1", repositoryWatch: { lockfilePath: "package-lock.json", snapshot: { commitSha: "abc1234" } } });
     mocks.claude.findUnique.mockResolvedValue({ ownerId: "alice" });
     mocks.localNode.findUnique.mockResolvedValue(null);
     mocks.job.findFirst.mockResolvedValue(null);
@@ -57,6 +57,18 @@ describe("createDependencyJob", () => {
     mocks.job.findMany.mockResolvedValue([]);
     mocks.pkg.findMany.mockResolvedValue([{ name: "next", version: "16.4.6" }]);
     expect(german((await createDependencyJob({}, form())).ok)).toBe(false);
+    expect(mocks.job.create).not.toHaveBeenCalled();
+  });
+
+  it("startet für pnpm-Projekte einen Worker-Job", async () => {
+    mocks.app.findFirst.mockResolvedValue({ id: "app1", repositoryWatch: { lockfilePath: "pnpm-lock.yaml", snapshot: { commitSha: "abc1234", dependencies: [{ name: "next", locked: "16.4.5" }] } } });
+    expect(german(await createDependencyJob({}, form()))).toMatchObject({ ok: true });
+    expect(mocks.job.create).toHaveBeenCalledOnce();
+  });
+
+  it("lehnt pnpm-Links ohne eindeutige Ausgangsversion ab", async () => {
+    mocks.app.findFirst.mockResolvedValue({ id: "app1", repositoryWatch: { lockfilePath: "pnpm-lock.yaml", snapshot: { commitSha: "abc1234", dependencies: [{ name: "next", locked: null }] } } });
+    expect(german(await createDependencyJob({}, form()))).toMatchObject({ ok: false, message: expect.stringMatching(/keine direkte Abhängigkeit/) });
     expect(mocks.job.create).not.toHaveBeenCalled();
   });
 

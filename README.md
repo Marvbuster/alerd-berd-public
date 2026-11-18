@@ -47,6 +47,24 @@ Most uptime tools tell you a service is down. Alerd Berd also asks the service h
 | **Daily digest** *(Coolify)* | One morning mail with all pending updates, grouped across services. |
 | **Coolify integration** | Imports your Coolify apps, watches deploys and checks that the pushed commit is really live. |
 
+## Screenshots
+
+**Services:** every Coolify app with its monitors, status and pending updates, packages on the right.
+
+![Services](docs/screenshots/services.jpg)
+
+**Update chat:** Claude's analysis with risk, sources and recommendation. You can ask follow-up questions before anything is prepared.
+
+![Update chat with analysis](docs/screenshots/chat-review.jpg)
+
+**Your approval:** the worker has installed, built and tested the update, nothing is pushed until you say so.
+
+![Update chat waiting for commit and push](docs/screenshots/chat-push.jpg)
+
+**Queue:** what the worker is doing right now with live sub-steps, what comes next, which deploy is being watched and where it is your turn.
+
+![Queue](docs/screenshots/queue.jpg)
+
 ## The health contract
 
 One route, one JSON object. `status` is the only required field:
@@ -76,6 +94,8 @@ Add components, metrics with thresholds and runtime versions when you want a ric
 Schema and guide: [`spec/alerd-health.schema.json`](spec/alerd-health.schema.json) and [`spec/implementing-health.md`](spec/implementing-health.md). An instance also serves them under `/spec/` and an LLM-friendly summary at `/llms.txt`, so a coding agent can implement the route in your app on its own.
 
 ## How an update flows
+
+![How Alerd Berd works](docs/screenshots/architecture.jpg)
 
 ```mermaid
 flowchart LR
