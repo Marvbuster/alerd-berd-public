@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  baselineHint, lockstepDrift, lockstepHint, needsPrismaGenerate, sandboxScripts, changedTypeNames, wordHits, npmResolveHint, clip, bumpKind, changelogSection, versionFromTag, importPatterns, parseGrepCounts, nextRelevantFiles, pickSourceFiles, typesTarget, changedTypeFiles, claudeArgs, commitSha, dependencyPushText, evaluateLive, jobLabel, jobPackages, validateManifestChanges, gitBranch, healthUrls, probeText, githubUrl, jobUids, liveFactsText, mergeBuildEnvNames, modelArg, packageDir, workspaceDir, pnpmArgs, pnpmPackageManager, pnpmStepLabel, safeWatch, lockfileKind, parseBuildEnv, parseStream, placeholderFor, repositoryPath, validateManifestChange,
+  batchPushStep, batchPushText, baselineHint, lockstepDrift, lockstepHint, needsPrismaGenerate, sandboxScripts, changedTypeNames, wordHits, npmResolveHint, clip, bumpKind, changelogSection, versionFromTag, importPatterns, parseGrepCounts, nextRelevantFiles, pickSourceFiles, typesTarget, changedTypeFiles, claudeArgs, commitSha, dependencyPushText, evaluateLive, jobLabel, jobPackages, validateManifestChanges, gitBranch, healthUrls, probeText, githubUrl, jobUids, liveFactsText, mergeBuildEnvNames, modelArg, packageDir, workspaceDir, pnpmArgs, pnpmPackageManager, pnpmStepLabel, safeWatch, lockfileKind, parseBuildEnv, parseStream, placeholderFor, repositoryPath, validateManifestChange,
 } from "../../scripts/dependency-worker-lib.mjs";
 
 const pkg = (deps: Record<string, string>, extra: Record<string, unknown> = {}) =>
@@ -413,5 +413,40 @@ describe("lockstepDrift", () => {
     expect(lockstepDrift(lock("12.7.6"), list)).toEqual([]);
     expect(lockstepHint([])).toBeNull();
     expect(lockstepDrift({ packages: { "node_modules/x": { version: "2.4.1", dependencies: { tslib: "^2.3.0" } }, "node_modules/tslib": { version: "2.8.1" } } }, [{ name: "x" }])).toEqual([]);
+  });
+});
+
+describe("batchPushStep", () => {
+  const at = (s: number) => new Date(Date.UTC(2026, 10, 20, 12, 0, s));
+  it("schickt den ältesten freigegebenen Job in den Push, wenn keiner unterwegs ist", () => {
+    const jobs = [{ id: "b", status: "READY_TO_PUSH", publishApprovalAt: at(2) }, { id: "a", status: "READY_TO_PUSH", publishApprovalAt: at(1) }, { id: "c", status: "READY_TO_PUSH", publishApprovalAt: null }];
+    expect(batchPushStep({}, jobs)).toEqual({ promote: jobs[1] });
+  });
+  it("wartet, solange ein Push oder Deploy läuft, aber nicht auf das Fazit", () => {
+    const next = { id: "b", status: "READY_TO_PUSH", publishApprovalAt: at(2) };
+    expect(batchPushStep({}, [{ id: "a", status: "DEPLOYING", publishApprovalAt: at(1) }, next])).toBeNull();
+    expect(batchPushStep({}, [{ id: "a", status: "PUBLISHING", publishApprovalAt: at(1) }, next])).toBeNull();
+    expect(batchPushStep({}, [{ id: "a", status: "LIVE_REVIEW", publishApprovalAt: at(1) }, next])).toEqual({ promote: next });
+  });
+  it("pausiert, wenn ein freigegebener Push gescheitert ist, nicht bei Fehlern davor", () => {
+    const next = { id: "b", status: "READY_TO_PUSH", publishApprovalAt: at(2) };
+    const failed = { id: "a", status: "DEPLOY_FAILED", publishApprovalAt: at(1) };
+    expect(batchPushStep({}, [failed, next])).toEqual({ pause: failed });
+    expect(batchPushStep({}, [{ id: "x", status: "FAILED", publishApprovalAt: null }, next])).toEqual({ promote: next });
+  });
+  it("tut nichts in pausierten, abgebrochenen oder fertigen Läufen", () => {
+    const next = { id: "b", status: "READY_TO_PUSH", publishApprovalAt: at(2) };
+    expect(batchPushStep({ pausedAt: at(0) }, [next])).toBeNull();
+    expect(batchPushStep({ cancelledAt: at(0) }, [next])).toBeNull();
+    expect(batchPushStep({}, [{ id: "a", status: "LIVE", publishApprovalAt: at(1) }])).toBeNull();
+  });
+});
+
+describe("batchPushText", () => {
+  it("meldet nur, wenn man dran ist oder der Lauf vorbei ist", () => {
+    expect(batchPushText("approval1", { count: 3 }, "de")).toEqual({ title: "Sammel-Update: Analysen fertig", body: "3 Dienste warten auf deine Freigabe." });
+    expect(batchPushText("done", { count: 3 }, "en")?.title).toBe("Batch update done");
+    expect(batchPushText("analyzing", { count: 3 }, "de")).toBeNull();
+    expect(batchPushText("publishing", { count: 3 }, "de")).toBeNull();
   });
 });

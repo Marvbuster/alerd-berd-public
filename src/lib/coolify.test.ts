@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   connection: { updateMany: vi.fn(), findFirstOrThrow: vi.fn(), findMany: vi.fn() },
-  apps: { upsert: vi.fn(), updateMany: vi.fn() },
-  fetchApps: vi.fn(), decrypt: vi.fn(), transaction: vi.fn(),
+  apps: { upsert: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
+  fetchApps: vi.fn(), fetchAutoDeploy: vi.fn(), decrypt: vi.fn(), transaction: vi.fn(),
 }));
 vi.mock("./prisma", () => ({ prisma: { coolifyConnection: mocks.connection, coolifyApplication: mocks.apps, $transaction: mocks.transaction } }));
 vi.mock("./credentials", () => ({ decryptCredential: mocks.decrypt }));
-vi.mock("./coolify-client", () => ({ fetchCoolifyApplications: mocks.fetchApps }));
+vi.mock("./coolify-client", () => ({ fetchCoolifyApplications: mocks.fetchApps, fetchCoolifyAutoDeploy: mocks.fetchAutoDeploy }));
 import { syncCoolifyConnection, syncDueCoolifyConnections } from "./coolify";
 
 beforeEach(() => {
@@ -16,6 +16,7 @@ beforeEach(() => {
   mocks.connection.findFirstOrThrow.mockResolvedValue({ baseUrl: "https://coolify.test/api/v1", tokenEncrypted: "ciphertext" });
   mocks.decrypt.mockReturnValue("token");
   mocks.fetchApps.mockResolvedValue([{ uuid: "abc", name: "App" }]);
+  mocks.apps.findMany.mockResolvedValue([]);
   mocks.transaction.mockImplementation((fn) => fn({ coolifyConnection: mocks.connection, coolifyApplication: mocks.apps }));
 });
 
@@ -32,6 +33,19 @@ describe("Coolify inventory persistence", () => {
     expect(mocks.apps.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { connectionId_uuid: { connectionId: "id", uuid: "abc" } }, update: expect.objectContaining({ missingSince: null }) }));
     expect(mocks.apps.upsert.mock.calls[0][0].update).not.toHaveProperty("hiddenAt");
     expect(mocks.apps.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { connectionId: "id", uuid: { notIn: ["abc"] }, missingSince: null } }));
+  });
+  it("liest Auto-Deploy nur für Dienste und behält den alten Wert, wenn die Abfrage scheitert", async () => {
+    mocks.fetchApps.mockResolvedValue([{ uuid: "abc", name: "App" }, { uuid: "def", name: "Other" }, { uuid: "ghi", name: "Pool" }]);
+    mocks.apps.findMany.mockResolvedValue([{ uuid: "abc" }, { uuid: "def" }]);
+    mocks.fetchAutoDeploy.mockImplementation((_b: string, _t: string, uuid: string) => uuid === "abc" ? Promise.resolve(false) : Promise.reject(new Error("timeout")));
+    expect((await syncCoolifyConnection("id", "owner")).ok).toBe(true);
+    expect(mocks.apps.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ connectionId: "id", serviceAt: { not: null } }) }));
+    expect(mocks.fetchAutoDeploy).toHaveBeenCalledTimes(2);
+    const [abc, def, ghi] = mocks.apps.upsert.mock.calls.map((c) => c[0]);
+    expect(abc.update.autoDeploy).toBe(false);
+    expect(def.update).not.toHaveProperty("autoDeploy");
+    expect(ghi.update).not.toHaveProperty("autoDeploy");
+    expect(ghi.create.autoDeploy).toBeNull();
   });
   it("preserves last successful inventory on failure and releases the lease", async () => {
     mocks.fetchApps.mockRejectedValue(new Error("contains secret-token"));

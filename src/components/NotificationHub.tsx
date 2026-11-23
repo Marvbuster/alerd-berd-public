@@ -13,6 +13,8 @@ import type { DependencyNotification } from "@/lib/dependency-notifications";
 import { ago, CHAT_SUFFIX, elapsed } from "@/lib/dependency-phase";
 import { StateChip } from "./QueueBoard";
 
+// Mehr passt nicht übersichtlich ins Panel, den Rest zeigt die Warteschlange.
+const MAX_SHOWN = 5;
 // Andere Komponenten (Update-Chat) melden hierüber, dass sich etwas geändert hat.
 export const NOTIFICATIONS_EVENT = "alerd:notifications";
 const BUSY = new Set(["worker", "waiting"]);
@@ -88,6 +90,7 @@ export function NotificationHub({ initial }: { initial: DependencyNotification[]
     setItems((list) => list.map((i) => i.jobId === item.jobId ? { ...i, unread: false } : i));
     unreadRef.current = Math.max(0, unreadRef.current - (item.unread ? 1 : 0));
     void markDependencySeen([item.jobId]);
+    if (item.href) { router.push(item.href); return; }
     // Schon auf /services: nur den Hash setzen. Das löst ein echtes hashchange aus,
     // Liste und Update-Chat reagieren darauf. router.push mit gleichem Pfad lädt
     // dagegen nur neu, ohne Dienst und Modal zu wechseln.
@@ -119,6 +122,11 @@ export function NotificationHub({ initial }: { initial: DependencyNotification[]
     } catch (e) { setPushMessage(String(e)); }
   };
 
+  // Höchstens fünf Meldungen, ungelesene zuerst. Den Rest zeigt die Warteschlange.
+  const ordered = [...items.filter((i) => i.unread), ...items.filter((i) => !i.unread)];
+  const shown = ordered.slice(0, MAX_SHOWN);
+  const hidden = ordered.length - shown.length;
+
   return <div className="notification-hub" ref={rootRef}>
     <button type="button" className={`icon-button notification-bell${ring ? " notification-bell--ring" : ""}`} aria-label={unread ? _t(_locale, "NotificationHub.m08a2d5226e", { value0: unread }) : _t(_locale, "common.notifications")} aria-expanded={open} onClick={() => { setOpen((v) => !v); if (!open) void load(); }}>
       <Icon name="bell" size={18} />
@@ -129,20 +137,20 @@ export function NotificationHub({ initial }: { initial: DependencyNotification[]
       <div className="notification-panel-head"><span>{_t(_locale, "NotificationHub.m22e2bada8f")}</span>{unread > 0 && <button type="button" onClick={markAll}>{_t(_locale, "NotificationHub.mfbaa45b3e5")}</button>}</div>
       {items.length === 0
         ? <p className="notification-empty">{_t(_locale, "NotificationHub.m6f4eb2f576")}</p>
-        : <>{[{ title: _t(_locale, "NotificationHub.md9b1e13f3b"), list: items.filter((i) => i.unread) }, { title: _t(_locale, "NotificationHub.mc1b3878473"), list: items.filter((i) => !i.unread) }].map(({ title, list }) => list.length > 0 && <div key={title}>
+        : <>{[{ title: _t(_locale, "NotificationHub.md9b1e13f3b"), list: shown.filter((i) => i.unread) }, { title: _t(_locale, "NotificationHub.mc1b3878473"), list: shown.filter((i) => !i.unread) }].map(({ title, list }) => list.length > 0 && <div key={title}>
           {/* Überschriften nur, wenn es beides gibt, sonst sagt der Zustand alles. */}
-          {unread > 0 && unread < items.length && <p className="notification-section">{title}</p>}
+          {shown.some((i) => i.unread) && shown.some((i) => !i.unread) && <p className="notification-section">{title}</p>}
           <ul>{list.map((item) => <li key={item.jobId}>
             <button type="button" className={`notification-item${item.unread ? " notification-item--unread" : ""}`} tabIndex={open ? 0 : -1} onClick={() => go(item)}>
               <span className="min-w-0 flex-1">
-                <span className="notification-app"><span>{item.applicationName}</span>{item.unread && <span className="notification-new">{_t(_locale, "NotificationHub.md9b1e13f3b")}</span>}</span>
-                <span className="notification-title">{item.label ?? _t(_locale, "NotificationHub.mc661b3d464", { value0: item.targetVersion })} · {item.current ?? item.title} · {BUSY.has(item.actor) && item.since ? elapsed(new Date(item.since), now) : ago(new Date(item.changedAt), now, _locale)}</span>
+                <span className="notification-app"><span>{item.applicationName}</span></span>
+                <span className="notification-title">{item.label ?? _t(_locale, "NotificationHub.mc661b3d464", { value0: item.targetVersion })} · {BUSY.has(item.actor) && item.since ? elapsed(new Date(item.since), now) : ago(new Date(item.changedAt), now, _locale)}</span>
               </span>
               <StateChip actor={item.actor} />
             </button>
           </li>)}</ul>
         </div>)}</>}
-      <Link href="/queue" className="notification-foot" tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}>{_t(_locale, "NotificationHub.mefe2001afd")}</Link>
+      <Link href="/queue" className="notification-foot" tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}>{_t(_locale, "NotificationHub.mefe2001afd")}{hidden > 0 && <span className="notification-more"> · +{hidden}</span>}</Link>
       {(push === "off" || push === "denied") && <div className="notification-push">
         {push === "off"
           ? <><span>{_t(_locale, "NotificationHub.ma7be7035de")}</span><button type="button" tabIndex={open ? 0 : -1} onClick={enablePush}>{_t(_locale, "NotificationHub.mcfc6942928")}</button></>

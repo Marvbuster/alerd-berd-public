@@ -1,6 +1,6 @@
 import { languagePrompt } from "./dependency-worker-lib.mjs";
 
-import { translate as _t, recipientLocale, errorMessage, translateMessage as _message, hasLocalizedPrefix, MessageError } from "./i18n.mjs";
+import { translate as _t, recipientLocale, errorMessage, translateMessage as _message, hasLocalizedPrefix, MessageError, messageCode } from "./i18n.mjs";
 import { createDecipheriv } from "node:crypto";
 import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
@@ -11,7 +11,7 @@ import webpush from "web-push";
 import semver from "semver";
 import {
   claudeArgs, commitSha, dependencyPushText, diffHash, jobLabel, jobPackages, parseBuildEnv, validateManifestChanges, githubUrl, jobUids, npmArgs, pnpmArgs, packageDir, workspaceDir, pnpmPackageManager, lockfileKind, parseStream, safeWatch, validateManifestChange,
-  evaluateLive, healthUrls, liveFactsText, probeText, versionFromTag, changelogSection, bumpKind, importPatterns, parseGrepCounts, nextRelevantFiles, pickSourceFiles, typesTarget, changedTypeFiles, baselineHint, npmResolveHint, needsPrismaGenerate, prismaSchemaPaths, sandboxScripts, clip, changedTypeNames, wordHits, lockstepDrift, lockstepHint, createProgress, npmStepLabel, pnpmStepLabel, staleJobDirs, compareContains,
+  evaluateLive, healthUrls, liveFactsText, probeText, versionFromTag, changelogSection, bumpKind, importPatterns, parseGrepCounts, nextRelevantFiles, pickSourceFiles, typesTarget, changedTypeFiles, baselineHint, npmResolveHint, needsPrismaGenerate, prismaSchemaPaths, sandboxScripts, clip, changedTypeNames, wordHits, lockstepDrift, lockstepHint, createProgress, npmStepLabel, pnpmStepLabel, staleJobDirs, compareContains, batchPushStep, batchStage, batchPushText, BATCH_NOTIFY_STAGES,
 } from "./dependency-worker-lib.mjs";
 
 // Sicherheitsmodell: Der Worker selbst läuft als root und hält
@@ -566,6 +566,8 @@ function vapidReady() {
 
 async function notifyPush(job, status) {
   const _locale = recipientLocale(job.owner?.locale);
+  // Jobs eines Sammel-Updates meldet der Lauf gesammelt (notifyBatches).
+  if (job.batchId) return;
   try {
     const text = dependencyPushText(status, { appName: job.application.name, label: jobLabel(jobPackages(job), _locale) }, _locale);
     if (!text) return;
@@ -885,6 +887,52 @@ async function processLiveReview(job) {
   } catch (error) { await fail(job, error); }
 }
 
+// Sammel-Updates weiterschieben: pro Lauf höchstens einen freigegebenen Push
+// starten oder den Lauf pausieren (batchPushStep). Der Push selbst läuft danach
+// ganz normal über tick(), wie nach einer Einzelfreigabe.
+async function advanceBatches() {
+  const batches = await prisma.dependencyBatch.findMany({
+    where: { cancelledAt: null, pausedAt: null, owner: { active: true }, jobs: { some: { status: "READY_TO_PUSH", publishApprovalAt: { not: null } } } },
+    select: { id: true, jobs: { select: { id: true, status: true, publishApprovalAt: true, application: { select: { name: true } } } } },
+  });
+  for (const batch of batches) {
+    const step = batchPushStep(batch, batch.jobs);
+    if (step?.pause) {
+      const paused = await prisma.dependencyBatch.updateMany({ where: { id: batch.id, pausedAt: null }, data: { pausedAt: new Date(), pauseReason: messageCode("BatchUpdate.pausedBecause", { name: step.pause.application.name }) } });
+      if (paused.count) console.log(`batch ${batch.id} paused after ${step.pause.id}`);
+    } else if (step?.promote) {
+      const promoted = await prisma.dependencyJob.updateMany({ where: { id: step.promote.id, status: "READY_TO_PUSH", publishApprovalAt: { not: null } }, data: { status: "PUBLISHING", lastError: null } });
+      if (promoted.count) await prisma.dependencyMessage.create({ data: { jobId: step.promote.id, role: "SYSTEM", content: messageCode("BatchUpdate.yourTurn") } });
+    }
+  }
+}
+
+// Web Push je Sammel-Update: einmal bei Freigabe 1, Freigabe 2, Pause und am
+// Ende. notifiedStage merkt sich die zuletzt gemeldete Stufe, die Bedingung im
+// updateMany sorgt dafür, dass genau ein Durchlauf meldet.
+async function notifyBatches() {
+  const batches = await prisma.dependencyBatch.findMany({
+    where: { cancelledAt: null, owner: { active: true }, OR: [{ notifiedStage: null }, { notifiedStage: { not: "done" } }] },
+    select: { id: true, ownerId: true, pausedAt: true, cancelledAt: true, notifiedStage: true, owner: { select: { locale: true } }, jobs: { select: { status: true, publishApprovalAt: true } } },
+  });
+  for (const batch of batches) {
+    if (!batch.jobs.length) continue;
+    const stage = batchStage(batch, batch.jobs);
+    if (!BATCH_NOTIFY_STAGES.includes(stage) || stage === batch.notifiedStage) continue;
+    const claimed = await prisma.dependencyBatch.updateMany({ where: { id: batch.id, notifiedStage: batch.notifiedStage }, data: { notifiedStage: stage } });
+    if (!claimed.count) continue;
+    const _locale = recipientLocale(batch.owner?.locale);
+    const text = batchPushText(stage, { count: batch.jobs.length }, _locale);
+    const channels = await prisma.alertChannel.findMany({ where: { ownerId: batch.ownerId, enabled: true, kind: "WEB_PUSH" } });
+    if (!text || !channels.length) continue;
+    if (!vapidReady()) { console.log(`batch ${batch.id} push übersprungen: VAPID-Schlüssel fehlen im Worker`); continue; }
+    const payload = JSON.stringify({ ...text, url: `/batch/${batch.id}`, tag: `batch-${batch.id}` });
+    const results = await Promise.allSettled(channels.map((c) => webpush.sendNotification(c.config, payload, { TTL: 3600 })));
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed) console.error(`batch ${batch.id} push: ${failed} von ${channels.length} Geräten nicht erreicht`);
+  }
+}
+
 async function tick(_locale = "de") {
   const now = new Date();
   const free = [{ workerLockedUntil: null }, { workerLockedUntil: { lt: now } }];
@@ -981,7 +1029,9 @@ setInterval(async () => {
   running = true;
   try {
     if (Date.now() - lastSweep > SWEEP_EVERY_MS) await sweepJobDirs().catch((error) => console.error("job dir sweep failed", error));
+    await advanceBatches().catch((error) => console.error("batch advance failed", error));
     await tick();
+    await notifyBatches().catch((error) => console.error("batch notify failed", error));
   } catch (error) { console.error("dependency worker tick failed", error); }
   finally { running = false; }
 }, pollMs);

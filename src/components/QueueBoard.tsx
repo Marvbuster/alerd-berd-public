@@ -9,7 +9,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { Queue, QueueEntry } from "@/lib/dependency-queue";
 import { WorkerProgress } from "./WorkerProgress";
-import { currentStep } from "@/lib/dependency-progress";
 import { localizedACTOR_LABEL as ACTOR_LABEL, ago, dependencySteps, elapsed, localizedSTEP_LABELS as STEP_LABELS } from "@/lib/dependency-phase";
 
 const POLL_MS = 5_000;
@@ -41,15 +40,16 @@ function Steps({ status }: { status: string }) {
 
 function Running({ entry, now }: { entry: QueueEntry; now: Date }) {
   const _locale = _useLocale();
-  const current = currentStep(entry.progress);
+  // Die Teilschritte zeigen, was gerade läuft. Erklärtext und letzte Meldung nur,
+  // wenn es keine Teilschritte gibt, sonst steht alles doppelt.
+  const steps = entry.progress.length > 0;
   return <article className={`panel queue-now queue-now--${entry.actor}`}>
     <div className="queue-now-head"><StateChip actor={entry.actor} /><Title entry={entry} />{entry.since && <span className="queue-clock">{elapsed(new Date(entry.since), now)}</span>}</div>
     <p className="queue-now-step">{entry.title}</p>
-    {current && <p className="queue-now-current">{_t(_locale, "QueueBoard.m63e265bb00")}<strong>{current.label}</strong> {_t(_locale, "QueueBoard.mfdc3dcf756")}{elapsed(new Date(current.startedAt), now)}</p>}
-    {entry.detail && <p className="queue-now-detail">{entry.detail}</p>}
+    {!steps && entry.detail && <p className="queue-now-detail">{entry.detail}</p>}
     <Steps status={entry.status} />
     <WorkerProgress steps={entry.progress} now={now} />
-    {entry.latest && <p className="queue-latest"><span>{_t(_locale, "QueueBoard.m9739a50cf0")}{entry.latestAt ? `, ${ago(new Date(entry.latestAt), now, _locale)}` : ""}</span>{entry.latest}</p>}
+    {!steps && entry.latest && <p className="queue-latest"><span>{_t(_locale, "QueueBoard.m9739a50cf0")}{entry.latestAt ? `, ${ago(new Date(entry.latestAt), now, _locale)}` : ""}</span>{entry.latest}</p>}
   </article>;
 }
 
@@ -59,7 +59,7 @@ function Row({ entry, now, position, note }: { entry: QueueEntry; now: Date; pos
     {position !== undefined && <span className="queue-pos" aria-label={_t(_locale, "QueueBoard.m75a9533f28", { value0: position })}>{position}</span>}
     <div className="min-w-0 flex-1">
       <Title entry={entry} />
-      <span className="queue-sub">{entry.title}{note ? ` · ${note}` : ""}</span>
+      {note && <span className="queue-sub">{note}</span>}
     </div>
     <StateChip actor={entry.actor} />
     <span className="queue-time" title={new Date(entry.changedAt).toLocaleString(intlLocale(_locale))}>{ago(new Date(entry.changedAt), now, _locale)}</span>
@@ -112,10 +112,10 @@ export function QueueBoard({ initial }: { initial: Queue }) {
           <span>{stalled ? _t(_locale, "QueueBoard.m90ff89d6a5", { value0: lastSeen }) : _t(_locale, "QueueBoard.md06839dbcc", { value0: lastSeen })}</span>
         </div>}
     </section>
-    <Section title={_t(_locale, "QueueBoard.m7d75c06611")} hint={_t(_locale, "QueueBoard.m090eb9e580")} empty={_t(_locale, "QueueBoard.m142a200d64")}>
+    <Section title={_t(_locale, "QueueBoard.m7d75c06611")} empty={_t(_locale, "QueueBoard.m142a200d64")}>
       {queue.next.map((e, i) => <Row key={e.jobId} entry={e} now={now} position={i + 1} />)}
     </Section>
-    <Section title={_t(_locale, "QueueBoard.mf4c1634ff6")} hint={_t(_locale, "QueueBoard.m2ec406d589")}>
+    <Section title={_t(_locale, "QueueBoard.mf4c1634ff6")}>
       {queue.deploying.map((e) => {
         const left = e.lockedUntil ? Math.max(0, Math.round((new Date(e.lockedUntil).getTime() - now.getTime()) / 1000)) : null;
         return <Row key={e.jobId} entry={e} now={now} note={left !== null ? (left ? _t(_locale, "QueueBoard.m54ba8822b4", { value0: left }) : _t(_locale, "QueueBoard.m8dbab7f916")) : undefined} />;
@@ -127,7 +127,7 @@ export function QueueBoard({ initial }: { initial: Queue }) {
     <Section title={_t(_locale, "QueueBoard.md3b54f17ff")}>
       {queue.yours.map((e) => <Row key={e.jobId} entry={e} now={now} />)}
     </Section>
-    <Section title={_t(_locale, "QueueBoard.mfffc76e80a")} hint={_t(_locale, "QueueBoard.m97c8930557")}>
+    <Section title={_t(_locale, "QueueBoard.mfffc76e80a")}>
       {queue.recent.map((e) => <Row key={e.jobId} entry={e} now={now} />)}
     </Section>
   </div>;

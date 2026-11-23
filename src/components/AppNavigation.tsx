@@ -14,10 +14,12 @@ function links(_locale: string = "de"): { href: string; label: string; icon: Ico
   { href: "/queue", label: _t(_locale, "AppNavigation.mf0e0c64b1e"), icon: "queue" },
 ]); }
 
-export function AppNavigation() {
+// Der Tab „Sammel-Update“ erscheint nur, solange ein Lauf offene Jobs hat.
+export function AppNavigation({ batchId = null }: { batchId?: string | null }) {
   const _locale = _useLocale();
   const pathname = usePathname();
-  return <nav className="app-navigation" aria-label={_t(_locale, "AppNavigation.me8fc666068")}>{links(_locale).map(({ href, label, icon }) => {
+  const items = batchId ? [...links(_locale), { href: `/batch/${batchId}`, label: _t(_locale, "BatchUpdate.pageTitle"), icon: "refresh" as IconName }] : links(_locale);
+  return <nav className="app-navigation" aria-label={_t(_locale, "AppNavigation.me8fc666068")}>{items.map(({ href, label, icon }) => {
     const active = pathname.startsWith(href) || (href === "/services" && pathname.startsWith("/monitors"));
     return <Link href={href} key={href} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} />{label}</Link>;
   })}</nav>;

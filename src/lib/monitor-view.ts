@@ -5,42 +5,43 @@ import { evaluatePackage, loadWatchContext } from "@/lib/version-watch";
 // Single Source of Truth für alle Monitor-Views (Registry, Sphere, …):
 // baut aus Monitor + letzter Check-Historie + letztem Spec-Health-Payload die
 // VizNode-Liste. Jede View rendert nur noch, statt selbst zu queren.
-export async function loadMonitorNodes(ownerId: string): Promise<VizNode[]> {
+// applicationId: nur die Monitore, die an diesem Dienst hängen (Chat-Fenster).
+export async function loadMonitorNodes(ownerId: string, applicationId?: string): Promise<VizNode[]> {
   const monitors = await prisma.monitor.findMany({
-    where: { ownerId },
+    where: { ownerId, ...(applicationId ? { coolifyLinks: { some: { applicationId } } } : {}) },
     orderBy: [{ enabled: "desc" }, { name: "asc" }],
     include: { coolifyLinks: {
       where: { application: { connection: { ownerId } } },
       select: { application: { select: { id: true, name: true, missingSince: true, connection: { select: { label: true } } } } },
     } },
   });
+  const ids = monitors.map((m) => m.id);
 
-  // Antwortzeit-Historie (letzte 48 Checks, älteste→neueste; DOWN → null = Lücke).
-  const histories = await Promise.all(
-    monitors.map((m) =>
-      prisma.check.findMany({
-        where: { monitorId: m.id },
-        orderBy: { checkedAt: "desc" },
-        take: 48,
-        select: { status: true, responseTimeMs: true, checkedAt: true },
-      }),
-    ),
-  );
-
-  // Letzter Check je Monitor → volles Spec-Health-Payload (components/metrics/version).
-  const latest = await Promise.all(
-    monitors.map((m) =>
-      prisma.check.findFirst({
-        where: { monitorId: m.id },
-        orderBy: { checkedAt: "desc" },
-        select: { payload: true, version: true, uptimeSec: true, checkedAt: true },
-      }),
-    ),
-  );
+  // Verlauf und letzter Check für alle Monitore in je einer Abfrage. Früher zwei
+  // Abfragen pro Monitor, bei ~50 Monitoren ~100 Stück pro Render, und die SSE-Route
+  // rendert alle 8 Sekunden. LATERAL nutzt den Index (monitorId, checkedAt).
+  type HistoryRow = { monitorId: string; status: string; responseTimeMs: number | null; checkedAt: Date };
+  type LatestRow = { monitorId: string; payload: unknown; version: string | null; uptimeSec: number | null; checkedAt: Date };
+  const [historyRows, latestRows] = ids.length ? await Promise.all([
+    // Antwortzeit-Historie (letzte 48 Checks je Monitor).
+    prisma.$queryRaw<HistoryRow[]>`SELECT m.id AS "monitorId", c.status::text AS status, c."responseTimeMs", c."checkedAt"
+      FROM unnest(${ids}::text[]) AS m(id)
+      CROSS JOIN LATERAL (SELECT status, "responseTimeMs", "checkedAt" FROM "Check" WHERE "monitorId" = m.id ORDER BY "checkedAt" DESC LIMIT 48) c`,
+    // Letzter Check je Monitor → volles Spec-Health-Payload (components/metrics/version).
+    prisma.$queryRaw<LatestRow[]>`SELECT m.id AS "monitorId", c.payload, c.version, c."uptimeSec", c."checkedAt"
+      FROM unnest(${ids}::text[]) AS m(id)
+      CROSS JOIN LATERAL (SELECT payload, version, "uptimeSec", "checkedAt" FROM "Check" WHERE "monitorId" = m.id ORDER BY "checkedAt" DESC LIMIT 1) c`,
+  ]) : [[], []];
+  const byMonitor = new Map<string, HistoryRow[]>();
+  for (const row of historyRows) byMonitor.set(row.monitorId, [...(byMonitor.get(row.monitorId) ?? []), row]);
+  // Neueste zuerst, wie vorher aus findMany(orderBy desc).
+  const histories = monitors.map((m) => (byMonitor.get(m.id) ?? []).sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime()));
+  const latestBy = new Map(latestRows.map((r) => [r.monitorId, r]));
+  const latest = monitors.map((m) => latestBy.get(m.id) ?? null);
 
   // Versionswächter: live gemeldete Pakete + Referenzwissen (einmal pro Render).
   const [pkgRows, watchCtx] = await Promise.all([
-    prisma.monitorPackage.findMany({ where: { monitorId: { in: monitors.map((m) => m.id) } } }),
+    prisma.monitorPackage.findMany({ where: { monitorId: { in: ids } } }),
     loadWatchContext(),
   ]);
   const now = new Date();

@@ -48,7 +48,7 @@ export const WATCH_COLOR: Record<WatchLevel, string> = {
   red: "#ff8b93",
   orange: "#f8c66b",
   hint: "#51dcea",
-  ok: "#69dda9",
+  ok: "#7fdc72",
   unknown: "#a3b6cf",
 };
 
@@ -86,7 +86,7 @@ export interface VizNode {
 }
 
 export const STATUS_COLOR: Record<VizStatus, string> = {
-  UP: "#69dda9",
+  UP: "#7fdc72",
   DEGRADED: "#f8c66b",
   DOWN: "#ff8b93",
   UNKNOWN: "#a3b6cf",

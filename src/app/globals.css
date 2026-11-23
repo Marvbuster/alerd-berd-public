@@ -11,7 +11,7 @@
   --amber: #f8c66b;
   --red: #ff8b93;
   --cyan: #51dcea;
-  --up: #69dda9;
+  --up: #7fdc72;
   --degraded: #f8c66b;
   --down: #ff8b93;
   --unknown: #a3b6cf;
@@ -21,7 +21,7 @@
   --state-worker: #f8c66b;
   --state-waiting: #93a8c3;
   --state-stalled: #ffa463;
-  --state-done: #69dda9;
+  --state-done: #7fdc72;
   --state-failed: #ff8b93;
 }
 
@@ -86,7 +86,7 @@ label:has(> input[type="checkbox"]) { display: flex; align-items: flex-start; ga
 label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; }
 .tag { display: inline-flex; align-items: center; border: 1px solid #617b9566; border-radius: 6px; padding: 2px 7px; color: var(--fg-dim); background: #ffffff04; font-size: 11px; line-height: 1.4; }
 .led { display: inline-block; width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; }
-.led--up { background: var(--up); box-shadow: 0 0 0 3px #69dda910; }
+.led--up { background: var(--up); box-shadow: 0 0 0 3px #7fdc7210; }
 .led--degraded { background: var(--degraded); }
 .led--down { background: var(--down); }
 .led--unknown { background: var(--unknown); }
@@ -127,7 +127,7 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .connection-badge--unlinked { border-color: #f8c66b50; background: #f8c66b0d; color: #f8d59a; }
 .connection-badge--missing, .connection-badge--empty { border-color: #6c86a24d; color: var(--fg-dim); }
 .comparison-pill { width: 100%; padding: 10px 12px; font-size: 12px; }
-.comparison-pill--match { color: #b0f3d5; border-color: #69dda960; background: #69dda912; }
+.comparison-pill--match { color: #b0f3d5; border-color: #7fdc7260; background: #7fdc7212; }
 .comparison-pill--mismatch { color: #f8d59a; border-color: #f8c66b60; background: #f8c66b10; }
 .comparison-pill--unknown { color: var(--fg-dim); border-color: var(--fg-faint); background: #ffffff03; }
 .repository-versions { display: grid; gap: 8px; }
@@ -260,7 +260,7 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .credential-card--active { background: #ffffff03; padding: 12px 16px; }
 .credential-head { display: flex; align-items: center; gap: 14px; }
 .credential-icon { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: #ffffff08; color: var(--fg-dim); }
-.credential-card--active .credential-icon { color: var(--up); background: #69dda90d; }
+.credential-card--active .credential-icon { color: var(--up); background: #7fdc720d; }
 .credential-head h3 { font-size: 14px; font-weight: 620; }
 .credential-meta { display: flex; align-items: center; gap: 7px; margin-top: 1px; color: var(--fg-dim); font-size: 12px; }
 .credential-meta .led { width: 7px; height: 7px; box-shadow: none; }
@@ -292,7 +292,7 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .dependency-phase--worker { border-color: #f8c66b55; background: #f8c66b0b; }
 .dependency-phase--stalled { border-color: #ffa46377; background: #ffa4630f; }
 .dependency-phase--failed { border-color: #ff8b9377; background: #ff8b930f; }
-.dependency-phase--done { border-color: #69dda955; background: #69dda90b; }
+.dependency-phase--done { border-color: #7fdc7255; background: #7fdc720b; }
 .dependency-phase-dot { width: 9px; height: 9px; margin-top: 6px; flex-shrink: 0; border-radius: 50%; background: var(--unknown); }
 .dependency-phase--user .dependency-phase-dot { background: var(--state-user); }
 .dependency-phase--worker .dependency-phase-dot { background: var(--state-worker); }
@@ -315,8 +315,8 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .dependency-steps { display: flex; gap: 6px; margin-bottom: 14px; list-style: none; padding: 0; }
 .dependency-step { display: flex; flex: 1; align-items: center; gap: 8px; border-top: 2px solid var(--fg-faint); padding-top: 8px; color: var(--fg-dim); font-size: 12px; font-weight: 550; }
 .dependency-step-mark { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--fg-faint); font-size: 11px; }
-.dependency-step--done { border-color: #69dda988; color: var(--fg); }
-.dependency-step--done .dependency-step-mark { border-color: transparent; background: #69dda922; color: var(--up); }
+.dependency-step--done { border-color: #7fdc7288; color: var(--fg); }
+.dependency-step--done .dependency-step-mark { border-color: transparent; background: #7fdc7222; color: var(--up); }
 .dependency-step--current { border-color: var(--state-user); color: var(--fg); }
 .dependency-step--current .dependency-step-mark { border-color: var(--state-user); color: var(--state-user); }
 .dependency-step--running { border-color: var(--amber); color: var(--fg); }
@@ -464,17 +464,20 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .service-sort:hover, .service-sort[aria-sort="ascending"], .service-sort[aria-sort="descending"] { color: var(--fg); }
 .service-sort:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
 @media (max-width: 640px) { .service-columns > :nth-child(4) { display: none; } }
-.service-panel { max-height: calc(100dvh - var(--panel-top, 112px) - 16px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* Das Panel hat seine natürliche Höhe und scrollt mit der Seite, eine einzige
+   Scrollbar. Ist es höher als das Fenster, klebt es erst, wenn sein unteres Ende
+   den Fensterrand erreicht (top wird negativ, gesetzt in ServicesBrowser). */
+.service-panel { top: var(--panel-sticky-top, 112px); align-self: start; }
 .service-findings > summary { cursor: pointer; list-style: none; font-size: 13px; }
 .service-findings > summary::-webkit-details-marker { display: none; }
 .service-findings > summary::after { content: " ⌄"; color: var(--fg-dim); }
 .service-findings ul { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
-@media (max-width: 800px) { .service-panel { max-height: none; overflow: visible; } }
+@media (max-width: 800px) { .service-panel { top: 112px; } }
 
 /* Dienste, zweite Runde: Checks in der Liste, Anlegen im Panel */
 .inventory-row-status { flex-wrap: wrap; }
 .service-tally { margin-left: 4px; border-radius: 5px; padding: 0 5px; font-size: 10.5px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 17px; }
-.service-tally--ok { color: var(--up); background: #69dda914; }
+.service-tally--ok { color: var(--up); background: #7fdc7214; }
 .service-tally--warn { color: var(--amber); background: #f8c66b17; }
 .service-tally--error { color: var(--down); background: #ff8b9317; }
 .service-new-count { margin-left: 2px; border-radius: 99px; background: #08262f; color: var(--cyan); padding: 0 7px; font-size: 11px; line-height: 18px; }
@@ -539,7 +542,7 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .state-chip--waiting { color: var(--state-waiting); border-color: #93a8c355; background: transparent; }
 .state-chip--waiting i { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
 .state-chip--stalled { color: var(--state-stalled); border-color: #ffa46366; background: #ffa46314; }
-.state-chip--done { color: var(--state-done); border-color: #69dda955; background: #69dda912; }
+.state-chip--done { color: var(--state-done); border-color: #7fdc7255; background: #7fdc7212; }
 .state-chip--idle { color: var(--fg-dim); border-color: #ffffff22; background: #ffffff08; }
 .state-chip--failed { color: var(--state-failed); border-color: #ff8b9366; background: #ff8b9314; }
 
@@ -586,7 +589,7 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .worker-progress-mark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 1.5px solid var(--fg-faint); font-size: 10px; font-weight: 800; }
 .worker-progress-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .worker-progress-time { font-variant-numeric: tabular-nums; font-size: 12px; }
-.worker-progress-step--done .worker-progress-mark { border-color: transparent; background: #69dda922; color: var(--state-done); }
+.worker-progress-step--done .worker-progress-mark { border-color: transparent; background: #7fdc7222; color: var(--state-done); }
 .worker-progress-step--failed { color: var(--fg); }
 .worker-progress-step--failed .worker-progress-mark { border-color: var(--state-failed); color: var(--state-failed); }
 .worker-progress-step--running { color: var(--fg); font-weight: 600; }
@@ -594,3 +597,36 @@ label:has(> input[type="checkbox"]) > input[type="checkbox"] { margin: 2px 0 0; 
 .worker-progress-step--running .worker-progress-time { color: var(--state-worker); }
 @keyframes worker-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .worker-progress-step--running .worker-progress-mark { animation: none; border-top-color: var(--state-worker); } }
+
+/* Update-Kopf im Dienst-Panel: Abstand zwischen Überschrift, Engine-Badge und Text */
+.dependency-entry-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 8px; font-size: 12px; color: var(--fg-dim); }
+
+/* Alle aktualisieren: ein Block pro Dienst, darunter seine Pakete. */
+.batch-service { display: grid; gap: 6px; }
+.batch-service-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.batch-service-head input { accent-color: var(--cyan); }
+.batch-skipped { display: grid; gap: 4px; font-size: 12px; color: var(--fg-dim); }
+.batch-skipped ul { display: grid; gap: 4px; }
+.batch-skipped strong { color: var(--fg); font-weight: 600; margin-right: 6px; }
+.batch-service .service-pool { max-height: none; overflow: visible; }
+
+/* Sammel-Update (/batch/<id>) */
+.service-chip--ok { color: var(--up); border-color: #7fdc7266; }
+.batch-stage { padding: 16px 18px; border-left: 4px solid var(--state-worker); }
+.batch-stage--user { border-left-color: var(--state-user); }
+.batch-stage--done { border-left-color: var(--up); }
+.batch-stage .dependency-steps { margin-bottom: 4px; }
+.batch-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 4px; color: var(--fg-dim); font-size: 12px; }
+@media (max-width: 560px) { .batch-stage .dependency-step { font-size: 0; gap: 0; } .batch-stage .dependency-step-mark { font-size: 11px; } }
+.batch-gate-row { align-items: flex-start; }
+.batch-gate-row > input[type="checkbox"] { margin-top: 3px; accent-color: var(--cyan); width: 16px; height: 16px; flex: none; }
+.batch-gate-row.is-picked { background: #4fe3f00a; }
+.batch-gate-spacer { width: 16px; flex: none; }
+.batch-recommendation { margin-top: 6px; color: var(--fg); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.batch-engine-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.batch-gate-actions { display: grid; justify-items: start; gap: 8px; margin-top: 14px; }
+.btn--small { padding: 4px 10px; font-size: 12px; border-radius: 7px; }
+.batch-toggle button { padding: 3px 10px; border-radius: 7px; color: var(--fg-dim); font-size: 12px; font-weight: 600; cursor: pointer; }
+.batch-toggle button[aria-current] { color: var(--fg); background: #ffffff10; }
+.batch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.dependency-batch-note { margin-top: 12px; border: 1px solid #4fe3f033; border-radius: 10px; background: #4fe3f00a; padding: 8px 12px; color: var(--fg-dim); font-size: 13px; }

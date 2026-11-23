@@ -28,6 +28,8 @@ export type DependencyJobView = {
   lastError: string | null; validationLog: string | null; messages: Message[];
   diffHash?: string | null; publishApprovalAt?: Date | null; publishedAt?: Date | null;
   progress?: unknown;
+  // Teil eines Sammel-Updates: Freigaben laufen dann gesammelt auf dessen Seite.
+  batchId?: string | null;
 };
 
 const initial: DependencyActionState = {};
@@ -100,7 +102,7 @@ function CopyConclusion({ applicationName, job, text }: { applicationName: strin
 }
 
 // Wer arbeitet an diesem Chat: Claude oder die lokale Node. Immer sichtbar.
-function EngineChip({ engine }: { engine?: string }) {
+export function EngineChip({ engine }: { engine?: string }) {
   const _locale = _useLocale();
   return <span className={`service-chip dependency-engine-chip${engine === "LOCAL_NODE" ? " dependency-engine-chip--local" : ""}`}>{engineLabel(engine, _locale)}</span>;
 }
@@ -202,10 +204,13 @@ export function DependencyAssistant({ applicationId, applicationName, candidates
     return () => window.removeEventListener("hashchange", sync);
   }, [applicationId, onClose]);
   useEffect(() => { if (createState.jobId || messageState.ok || analysisState.ok || prepareState.ok || publishState.ok || retryPushState.ok || cancelState.ok || switchState.ok) router.refresh(); }, [createState.jobId, messageState.ok, analysisState.ok, prepareState.ok, publishState.ok, retryPushState.ok, cancelState.ok, switchState.ok, router]);
+  // Im Hintergrund-Tab nicht pollen, jeder Refresh rendert die ganze Seite auf dem Server.
   useEffect(() => {
     if (!polling) return;
-    const timer = window.setInterval(() => router.refresh(), 4_000);
-    return () => window.clearInterval(timer);
+    const tick = () => { if (document.visibilityState === "visible") router.refresh(); };
+    const timer = window.setInterval(tick, 4_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
   }, [polling, job?.id, router]);
 
   // Offener Chat gilt als gelesen, auch wenn währenddessen ein Schritt fertig
@@ -251,6 +256,8 @@ export function DependencyAssistant({ applicationId, applicationName, candidates
   const afterCancel = job?.status === "CANCELLED";
   const showPicker = !activeChat && (!job || picking || afterCancel) && candidates.length > 0;
   // Gleiche Regel wie cancelDependencyJob: nicht, solange der Worker den Job hält.
+  // Im Sammel-Update gibt man Analyse und Push dort gesammelt frei, nicht hier einzeln.
+  const inBatch = !!job?.batchId && !finished;
   const cancellable = !!job && !finished && ["DRAFT", "AWAITING_CLAUDE", "ANALYZING", "READY_FOR_REVIEW", "APPROVED", "READY_TO_PUSH"].includes(job.status) && phase?.actor !== "worker";
 
   const modal = <div className="dependency-modal-backdrop" role="presentation" onMouseDown={hide}><section className="dependency-modal" role="dialog" aria-modal="true" aria-label={_t(_locale, "DependencyAssistant.ma6147f7b0a", { value0: applicationName })} onMouseDown={(event) => event.stopPropagation()}>
@@ -281,10 +288,11 @@ export function DependencyAssistant({ applicationId, applicationName, candidates
           {((job.engine !== "LOCAL_NODE" && ["ANALYZING", "LIVE_REVIEW"].includes(job.status) && phase?.actor === "worker") || (job.engine === "LOCAL_NODE" && job.status === "AWAITING_NODE" && localNodeOnline)) && <div className="dependency-message dependency-message--assistant dependency-typing" aria-label={_t(_locale, "DependencyAssistant.m352514e955", { value0: engineLabel(job.engine, _locale) })}><span>{engineLabel(job.engine, _locale)}</span><i /><i /><i /></div>}
         </div>}
 
+        {inBatch && <p className="dependency-batch-note">{_t(_locale, "BatchUpdate.chatNote")} <Link href={`/batch/${job.batchId}`}>{_t(_locale, "BatchUpdate.toBatch")}</Link></p>}
         <div className="dependency-actions">
           {["AWAITING_CLAUDE", "DRAFT"].includes(job.status) && <form action={analysisAction}><button className="btn" disabled={analyzing}>{analyzing ? _t(_locale, "DependencyAssistant.ma4669e6e5e") : _t(_locale, "DependencyAssistant.md093f09cf2")}</button><Result state={analysisState} /></form>}
-          {job.status === "READY_FOR_REVIEW" && <form action={prepareAction}><button className="btn" disabled={preparing}>{preparing ? _t(_locale, "DependencyAssistant.ma4669e6e5e") : _t(_locale, "DependencyAssistant.m068e88e5d6")}</button><Result state={prepareState} /></form>}
-          {job.status === "READY_TO_PUSH" && <form action={publishAction} onSubmit={(event) => { if (!confirm(_t(_locale, "DependencyAssistant.m53d2930987"))) event.preventDefault(); }}><button className="btn" disabled={publishing || !hasPublish}>{publishing ? _t(_locale, "DependencyAssistant.ma4669e6e5e") : _t(_locale, "DependencyAssistant.mc86120828e")}</button><Result state={publishState} /></form>}
+          {job.status === "READY_FOR_REVIEW" && !inBatch && <form action={prepareAction}><button className="btn" disabled={preparing}>{preparing ? _t(_locale, "DependencyAssistant.ma4669e6e5e") : _t(_locale, "DependencyAssistant.m068e88e5d6")}</button><Result state={prepareState} /></form>}
+          {job.status === "READY_TO_PUSH" && !inBatch && <form action={publishAction} onSubmit={(event) => { if (!confirm(_t(_locale, "DependencyAssistant.m53d2930987"))) event.preventDefault(); }}><button className="btn" disabled={publishing || !hasPublish}>{publishing ? _t(_locale, "DependencyAssistant.ma4669e6e5e") : _t(_locale, "DependencyAssistant.mc86120828e")}</button><Result state={publishState} /></form>}
           {step && <form action={retryPushAction}><button className="btn" disabled={retryingPush || (step.status === "PUBLISHING" && !hasPublish)}>{retryingPush ? _t(_locale, "DependencyAssistant.ma4669e6e5e") : step.label}</button><Result state={retryPushState} /></form>}
           {job.status === "AWAITING_NODE" && hasClaude && <form action={switchAction}><button className="btn btn--ghost" disabled={switching}>{switching ? _t(_locale, "DependencyAssistant.m1eb96a3915") : _t(_locale, "DependencyAssistant.m0c7dce8ed4")}</button><Result state={switchState} /></form>}
           {/* Neu analysieren führt über die Auswahl: Der Git-Stand kann sich seit dem Fehler geändert haben, erledigte Pakete fallen dort heraus. */}
@@ -301,7 +309,7 @@ export function DependencyAssistant({ applicationId, applicationName, candidates
   return <section className="detail-section dependency-entry">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h3>{_t(_locale, "DependencyAssistant.mc1c1009d3f")}</h3>
-        <p className="text-xs text-[var(--fg-dim)]">{phase && (activeChat || !candidates.length) ? <><EngineChip engine={job?.engine} /> {label} · {phase.title}</> : summary}</p>
+        <p className="dependency-entry-status">{phase && (activeChat || !candidates.length) ? <><EngineChip engine={job?.engine} /><span>{label} · {phase.title}</span></> : summary}</p>
       </div>
       {activeChat || (candidates.length && (hasClaude || hasLocalNode))
         ? <button type="button" className="btn btn--ghost" onClick={() => { setPicking(!activeChat); show(); }}>{activeChat ? _t(_locale, "DependencyAssistant.m4e9e7df2ae") : _t(_locale, "DependencyAssistant.m4c30a27db4")}</button>

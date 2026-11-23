@@ -8,6 +8,7 @@ import { loadServices } from "@/lib/services";
 import { githubRepository } from "@/lib/repository-logic";
 import { dependencyPhase } from "@/lib/dependency-phase";
 import { loadWorkerStatus } from "@/lib/dependency-worker-status";
+import { loadActiveBatchId } from "@/lib/dependency-batch";
 import { ServicesBrowser, type ServiceItem } from "@/components/ServicesBrowser";
 import { ServiceVersion } from "@/components/ServiceVersion";
 import { RepositoryPanel } from "@/components/RepositoryForms";
@@ -25,18 +26,20 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
   const _locale = await _getLocale();
   const user = await requireUser();
   const params = await searchParams;
-  const [{ services, pool, others, nodes }, connections, claude, publish, localNode, { busy: workerBusy, lastSeen: workerLastSeen }] = await Promise.all([
+  const [{ services, pool, others, nodes }, connections, claude, publish, localNode, { busy: workerBusy, lastSeen: workerLastSeen }, activeBatch] = await Promise.all([
     loadServices(user.id),
     prisma.coolifyConnection.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "asc" }, select: { id: true, label: true, lastError: true } }),
     prisma.claudeCredential.findUnique({ where: { ownerId: user.id }, select: { ownerId: true } }),
     prisma.gitHubPublishCredential.findUnique({ where: { ownerId: user.id }, select: { ownerId: true } }),
     prisma.localAnalysisNode.findUnique({ where: { ownerId: user.id }, select: { ownerId: true, lastSeenAt: true } }),
     loadWorkerStatus(undefined, _locale),
+    loadActiveBatchId(user.id),
   ]);
 
   if (params.view === "sphere") return <SphereView nodes={nodes} canEdit backHref="/services" backLabel={_t(_locale, "services.md1e2bc1541")} />;
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  const localNodeOnline = !!localNode?.lastSeenAt && Date.now() - localNode.lastSeenAt.getTime() < 10 * 60_000;
   const now = new Date();
   const items: ServiceItem[] = services.map((s) => {
     const monitors = s.checkIds.map((id) => byId.get(id)).filter((n) => !!n);
@@ -59,7 +62,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
         </RepositoryPanel>
         {watch && !app.missing && <BuildEnvForm applicationId={app.id} initial={watch.buildEnv ?? ""} />}
       </section>}
-      {watch && !app.missing && (s.candidates.length > 0 || s.job) && <DependencyAssistant applicationId={app.id} applicationName={s.name} candidates={s.candidates} hasClaude={!!claude} hasLocalNode={!!localNode} localNodeOnline={!!localNode?.lastSeenAt && Date.now() - localNode.lastSeenAt.getTime() < 10 * 60_000} hasPublish={!!publish} job={s.job} workerBusy={workerBusy} workerLastSeen={workerLastSeen} />}
+      {watch && !app.missing && (s.candidates.length > 0 || s.job) && <DependencyAssistant applicationId={app.id} applicationName={s.name} candidates={s.candidates} hasClaude={!!claude} hasLocalNode={!!localNode} localNodeOnline={localNodeOnline} hasPublish={!!publish} job={s.job} workerBusy={workerBusy} workerLastSeen={workerLastSeen} />}
       <details className="disclosure mt-6"><summary>{_t(_locale, "services.m45989de49f")}</summary><div className="disclosure-content">
         <dl className="service-facts">
           <div><dt>{_t(_locale, "services.mdf9a9413e0")}</dt><dd>{app.connectionLabel} · {app.status ?? _t(_locale, "services.m19b3e98cbf")}</dd></div>
@@ -84,9 +87,17 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
     };
   });
 
+  // Sammel-Update: Dienste mit Updates ohne offenen Chat, ohne große Sprünge (Majors, 0.x-Minors).
+  // Ohne Auto-Deploy in Coolify geht ein Push nicht live, der Lauf würde am Deploy hängen.
+  const ready = services.filter((s) => s.app.watch && !s.app.missing && !s.jobActive && s.candidates.some((c) => !c.breaking));
+  const batch = ready.filter((s) => s.app.autoDeploy !== false)
+    .map((s) => ({ applicationId: s.app.id, name: s.name, candidates: s.candidates.filter((c) => !c.breaking) }));
+  const manualDeploy = ready.filter((s) => s.app.autoDeploy === false).map((s) => s.name);
+
   return <main className="mx-auto max-w-[1480px] px-4 py-8 sm:px-7">
     {connections.filter((c) => c.lastError).map((c) => <p role="status" key={c.id} className="repository-warning mb-4">{c.label}: {_message(_locale, c.lastError)}</p>)}
     <ServicesBrowser items={items} pool={pool} otherIds={others} connections={connections.map(({ id, label }) => ({ id, label }))} nodes={nodes}
+      batch={{ services: batch, manualDeploy, hasClaude: !!claude, hasLocalNode: !!localNode, localNodeOnline, activeId: activeBatch }}
       initialFilter={params.filter ?? "all"} initialQuery={typeof params.q === "string" ? params.q.slice(0, 120) : ""} />
   </main>;
 }

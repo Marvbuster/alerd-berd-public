@@ -41,6 +41,7 @@ model User {
   claudeCredential        ClaudeCredential?
   localNode               LocalAnalysisNode?
   dependencyJobs          DependencyJob[]
+  dependencyBatches       DependencyBatch[]
   localAnalysisTasks      LocalAnalysisTask[]
 }
 
@@ -363,6 +364,9 @@ model CoolifyApplication {
   reportedCommit  String?
   buildPack       String?
   status          String?
+  // Coolify-Einstellung „Auto Deploy“, aus /applications/{uuid} (die Liste liefert
+  // sie nicht). null: noch nicht gelesen. false: Push allein geht nicht live.
+  autoDeploy      Boolean?
   lastSeenAt      DateTime
   missingSince    DateTime?
   // Owner preference; Coolify imports must never overwrite it.
@@ -476,10 +480,37 @@ model DependencyJob {
   messages          DependencyMessage[]
   claudeUsage       DependencyClaudeUsage[]
   nodeTasks         LocalAnalysisTask[]
+  // Teil eines Sammel-Updates. Wer an einer Sammelfreigabe abgewählt wird, verlässt
+  // den Lauf (null) und bleibt als normaler Chat beim Dienst.
+  batchId           String?
+  batch             DependencyBatch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   @@index([ownerId, updatedAt])
   @@index([applicationId, updatedAt])
   @@index([workerLockedUntil])
+  @@index([batchId])
+}
+
+// Sammel-Update über mehrere Dienste mit zwei Sammelfreigaben (nach der Analyse,
+// vor dem Push). Wo der Lauf steht, ergibt sich aus seinen Jobs. Hier steht nur,
+// was sich daraus nicht ableiten lässt.
+model DependencyBatch {
+  id            String          @id @default(cuid())
+  ownerId       String
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Ein Push ist gescheitert: Die übrigen Dienste warten, bis man fortsetzt oder abbricht.
+  pausedAt      DateTime?
+  pauseReason   String?
+  cancelledAt   DateTime?
+  // Glocke: zuletzt angesehen. Web Push: zuletzt gemeldete Stufe (approval1,
+  // approval2, paused, done), damit jede Stufe genau einmal meldet.
+  seenAt        DateTime?
+  notifiedStage String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  jobs          DependencyJob[]
+
+  @@index([ownerId, createdAt])
 }
 
 // Die Node erhält nur diesen vorgebauten Analyse-Kontext. Sie kann nie bauen,

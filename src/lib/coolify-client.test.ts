@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { coolifyBaseUrl, fetchCoolifyApplications, parseCoolifyApplications, parseCoolifyEnvKeys } from "./coolify-client";
+import { coolifyBaseUrl, fetchCoolifyApplications, parseCoolifyApplications, parseCoolifyEnvKeys, parseCoolifyAutoDeploy } from "./coolify-client";
 
 beforeEach(() => vi.stubEnv("COOLIFY_ALLOWED_ORIGINS", "https://coolify.example.com,http://coolify:8080"));
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -50,5 +50,18 @@ describe("parseCoolifyEnvKeys", () => {
       { key: "DATABASE_URI", value: "mongodb://geheim" }, { key: "PAYLOAD_SECRET", value: "x" },
       { key: "DATABASE_URI", is_preview: true }, { key: "SERVICE_FQDN_APP" }, { key: "bad-name" },
     ])).toEqual(["DATABASE_URI", "PAYLOAD_SECRET"]);
+  });
+});
+
+describe("parseCoolifyAutoDeploy", () => {
+  it("liest is_auto_deploy_enabled aus settings, als Boolean oder 0/1", () => {
+    expect(parseCoolifyAutoDeploy({ settings: { is_auto_deploy_enabled: false } })).toBe(false);
+    expect(parseCoolifyAutoDeploy({ settings: { is_auto_deploy_enabled: 1 } })).toBe(true);
+    expect(parseCoolifyAutoDeploy({ settings: { is_auto_deploy_enabled: 0 } })).toBe(false);
+  });
+  it("gibt null zurück, wenn die Einstellung fehlt", () => {
+    expect(parseCoolifyAutoDeploy({ uuid: "abc" })).toBeNull();
+    expect(parseCoolifyAutoDeploy(null)).toBeNull();
+    expect(parseCoolifyAutoDeploy({ settings: { is_auto_deploy_enabled: "yes" } })).toBeNull();
   });
 });

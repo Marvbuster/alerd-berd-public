@@ -15,8 +15,9 @@ import { markDependencyJobsSeen } from "@/lib/dependency-notifications";
 import { engineLabel, TERMINAL_STATUSES } from "@/lib/dependency-phase";
 import { alreadyDelivered, isCriticalFix, jobLabel, updateMaturity } from "@/lib/dependency-target";
 import { lockfileKind } from "@/lib/repository-logic";
+import { loadActiveBatchId } from "@/lib/dependency-batch";
 import semver from "semver";
-import type { DependencyJobStatus } from "@prisma/client";
+import type { DependencyJobStatus, Prisma } from "@prisma/client";
 import { expiryOrRetry } from "@/lib/credential-expiry-watch";
 
 export type DependencyActionState = { ok?: boolean; message?: string; jobId?: string };
@@ -89,17 +90,29 @@ export async function deleteGitHubPublishCredential() {
   refresh();
 }
 
-// Ein Update-Chat für ein oder mehrere Pakete. Das Formular schickt
-// package=name@version pro Häkchen; alte Formulare nur targetVersion für next.
-export async function createDependencyJob(_state: DependencyActionState, form: FormData): Promise<DependencyActionState> {
-  const user = await requireUser();
-  const applicationId = String(form.get("applicationId") ?? "");
-  const entries = form.getAll("package").map(String);
-  const legacy = String(form.get("targetVersion") ?? "").trim();
-  const wanted = (entries.length ? entries : legacy ? [`next@${legacy}`] : []).slice(0, 20).map((entry) => {
-    const at = entry.lastIndexOf("@");
-    return { name: entry.slice(0, at), version: entry.slice(at + 1) };
-  });
+type Wanted = { name: string; version: string };
+type User = Awaited<ReturnType<typeof requireUser>>;
+type Engine = "CLAUDE" | "LOCAL_NODE";
+type JobDraft = { ok: false; message: string } | { ok: true; data: Prisma.DependencyJobUncheckedCreateInput };
+
+const parseWanted = (entry: string): Wanted => {
+  const at = entry.lastIndexOf("@");
+  return { name: entry.slice(0, at), version: entry.slice(at + 1) };
+};
+
+async function engineReady(ownerId: string, engine: Engine): Promise<string | null> {
+  const [credential, localNode] = await Promise.all([
+    prisma.claudeCredential.findUnique({ where: { ownerId }, select: { ownerId: true } }),
+    prisma.localAnalysisNode.findUnique({ where: { ownerId }, select: { ownerId: true } }),
+  ]);
+  if (engine === "CLAUDE" && !credential) return _code("actions.mb72a0a05a1");
+  if (engine === "LOCAL_NODE" && !localNode) return _code("actions.ma319cdf07d");
+  return null;
+}
+
+// Alle Prüfungen vor einem neuen Update-Chat, für den Einzelstart wie für das
+// Sammel-Update. Liefert die Daten für den Job oder den Grund, warum nicht.
+async function draftJob(user: User, applicationId: string, wanted: Wanted[], engine: Engine): Promise<JobDraft> {
   if (!wanted.length) return { ok: false, message: _code("actions.meffc1135c9") };
   if (wanted.some((p) => p.version.length > 60 || !/^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(p.name) || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(p.version))) return { ok: false, message: _code("actions.m928ec78354") };
   if (new Set(wanted.map((p) => p.name)).size !== wanted.length) return { ok: false, message: _code("actions.mef497c1483") };
@@ -146,13 +159,6 @@ export async function createDependencyJob(_state: DependencyActionState, form: F
       return { ok: false, message: when ? _code("actions.m02cd27824a", { value0: p.name, value1: p.version, value2: when }) : _code("actions.mf5df6f45e4", { value0: p.name, value1: p.version }) };
     }
   }
-  const engine = form.get("engine") === "LOCAL_NODE" ? "LOCAL_NODE" : "CLAUDE";
-  const [credential, localNode] = await Promise.all([
-    prisma.claudeCredential.findUnique({ where: { ownerId: user.id }, select: { ownerId: true } }),
-    prisma.localAnalysisNode.findUnique({ where: { ownerId: user.id }, select: { ownerId: true } }),
-  ]);
-  if (engine === "CLAUDE" && !credential) return { ok: false, message: _code("actions.mb72a0a05a1") };
-  if (engine === "LOCAL_NODE" && !localNode) return { ok: false, message: _code("actions.ma319cdf07d") };
   const open = await prisma.dependencyJob.findFirst({ where: { ownerId: user.id, applicationId: application.id, status: { notIn: [...TERMINAL_STATUSES] as DependencyJobStatus[] } }, select: { id: true } });
   if (open) return { ok: false, message: _code("actions.ma8968703f3") };
   // Nie dasselbe Update zweimal: weder nach einem Push noch wenn live schon die Version läuft.
@@ -163,22 +169,84 @@ export async function createDependencyJob(_state: DependencyActionState, form: F
   const done = wanted.filter((p) => alreadyDelivered(p.version, { jobs: delivered, runtimeVersions: runtime.filter((r) => r.name === p.name).map((r) => r.version), name: p.name }));
   if (done.length) return { ok: false, message: _code("actions.m61cbf666d0", { value0: done.length > 2 ? _code("common.packagesCount", { count: done.length }) : jobLabel(done) }) };
   const packages = wanted.map((p) => ({ ...p, from: fromOf(p.name) }));
-  const job = await prisma.dependencyJob.create({
-    data: {
-      ownerId: user.id,
-      applicationId: application.id,
-      packageName: packages[0].name,
-      targetVersion: packages[0].version,
-      packages: packages as never,
-      engine,
-      baseCommitSha: snapshot?.commitSha ?? null,
-      // Die Paketauswahl ist die Freigabe: Die Analyse startet sofort, mit Claude wie mit der lokalen Node.
-      status: "ANALYZING",
-      messages: { create: { role: "SYSTEM", content: _code("actions.m58c5ccb2f7", { value0: packages.map((p) => `${p.name} ${p.from ?? "?"} → ${p.version}`).join(", ") }) } },
-    },
-  });
+  return { ok: true, data: {
+    ownerId: user.id,
+    applicationId: application.id,
+    packageName: packages[0].name,
+    targetVersion: packages[0].version,
+    packages: packages as never,
+    engine,
+    baseCommitSha: snapshot?.commitSha ?? null,
+    // Die Paketauswahl ist die Freigabe: Die Analyse startet sofort, mit Claude wie mit der lokalen Node.
+    status: "ANALYZING",
+  } };
+}
+
+const startMessage = (data: Prisma.DependencyJobUncheckedCreateInput) =>
+  _code("actions.m58c5ccb2f7", { value0: (data.packages as { name: string; from: string | null; version: string }[]).map((p) => `${p.name} ${p.from ?? "?"} → ${p.version}`).join(", ") });
+
+// Ein Update-Chat für ein oder mehrere Pakete. Das Formular schickt
+// package=name@version pro Häkchen; alte Formulare nur targetVersion für next.
+export async function createDependencyJob(_state: DependencyActionState, form: FormData): Promise<DependencyActionState> {
+  const user = await requireUser();
+  const applicationId = String(form.get("applicationId") ?? "");
+  const entries = form.getAll("package").map(String);
+  const legacy = String(form.get("targetVersion") ?? "").trim();
+  const wanted = (entries.length ? entries : legacy ? [`next@${legacy}`] : []).slice(0, 20).map(parseWanted);
+  const engine: Engine = form.get("engine") === "LOCAL_NODE" ? "LOCAL_NODE" : "CLAUDE";
+  const draft = await draftJob(user, applicationId, wanted, engine);
+  if (!draft.ok) return draft;
+  const missing = await engineReady(user.id, engine);
+  if (missing) return { ok: false, message: missing };
+  const job = await prisma.dependencyJob.create({ data: { ...draft.data, messages: { create: { role: "SYSTEM", content: startMessage(draft.data) } } } });
   refresh();
   return { ok: true, jobId: job.id, message: _code("actions.m18bce6ba0b", { value0: engine === "LOCAL_NODE" ? _code("dependency_phase.engineLocal") : engineLabel(engine) }) };
+}
+
+export type BatchActionState = { ok?: boolean; message?: string; batchId?: string; skipped?: { name: string; message: string }[] };
+
+// Sammel-Update: ein Job pro Dienst, alle im selben Lauf. Das Formular schickt
+// package=<applicationId>|name@version pro Häkchen. Dienste, die eine Prüfung
+// nicht bestehen, werden übersprungen und mit Grund gemeldet, die übrigen starten.
+export async function createDependencyBatch(_state: BatchActionState, form: FormData): Promise<BatchActionState> {
+  const user = await requireUser();
+  const engine: Engine = form.get("engine") === "LOCAL_NODE" ? "LOCAL_NODE" : "CLAUDE";
+  const missing = await engineReady(user.id, engine);
+  if (missing) return { ok: false, message: missing };
+  // Ein Lauf zur Zeit: Zwei Läufe würden um dieselben Freigaben und Push-Plätze konkurrieren.
+  const active = await loadActiveBatchId(user.id);
+  if (active) return { ok: false, batchId: active, message: _code("BatchUpdate.alreadyRunning") };
+  const byApp = new Map<string, Wanted[]>();
+  for (const raw of form.getAll("package").map(String)) {
+    const bar = raw.indexOf("|");
+    if (bar < 1) continue;
+    const list = byApp.get(raw.slice(0, bar)) ?? [];
+    if (list.length < 20) list.push(parseWanted(raw.slice(bar + 1)));
+    byApp.set(raw.slice(0, bar), list);
+  }
+  if (!byApp.size) return { ok: false, message: _code("BatchUpdate.nothingPicked") };
+  if (byApp.size > 40) return { ok: false, message: _code("BatchUpdate.tooMany") };
+  const apps = await prisma.coolifyApplication.findMany({ where: { id: { in: [...byApp.keys()] }, connection: { ownerId: user.id } }, select: { id: true, name: true, autoDeploy: true } });
+  const names = new Map(apps.map((a) => [a.id, a.name]));
+  const manual = new Set(apps.filter((a) => a.autoDeploy === false).map((a) => a.id));
+  const drafts: Prisma.DependencyJobUncheckedCreateInput[] = [];
+  const skipped: { name: string; message: string }[] = [];
+  // Nacheinander statt parallel: Jede Prüfung liest mehrere Tabellen, und der Lauf ist klein.
+  for (const [applicationId, wanted] of byApp) {
+    // Ohne Auto-Deploy käme der Push nie live an, der Lauf würde nach 30 Minuten pausieren.
+    if (manual.has(applicationId)) { skipped.push({ name: names.get(applicationId) ?? "?", message: _code("BatchUpdate.manualDeploy") }); continue; }
+    const draft = await draftJob(user, applicationId, wanted, engine);
+    if (draft.ok) drafts.push(draft.data);
+    else skipped.push({ name: names.get(applicationId) ?? "?", message: draft.message });
+  }
+  if (!drafts.length) return { ok: false, message: _code("BatchUpdate.noneStarted"), skipped };
+  const batch = await prisma.$transaction(async (tx) => {
+    const created = await tx.dependencyBatch.create({ data: { ownerId: user.id }, select: { id: true } });
+    for (const data of drafts) await tx.dependencyJob.create({ data: { ...data, batchId: created.id, messages: { create: [{ role: "SYSTEM", content: startMessage(data) }, { role: "SYSTEM", content: _code("BatchUpdate.jobJoined", { count: drafts.length }) }] } } });
+    return created;
+  });
+  refresh();
+  return { ok: true, batchId: batch.id, skipped, message: _code("BatchUpdate.started", { count: drafts.length, engine: engine === "LOCAL_NODE" ? _code("dependency_phase.engineLocal") : engineLabel(engine) }) };
 }
 
 // Abbrechen geht nur, solange der Worker den Job nicht hält. Läuft gerade
@@ -259,7 +327,7 @@ export async function startDependencyAnalysis(jobId: string): Promise<Dependency
 
 export async function approveDependencyPreparation(jobId: string): Promise<DependencyActionState> {
   const user = await requireUser();
-  const updated = await prisma.dependencyJob.updateMany({ where: { id: jobId, ownerId: user.id, status: "READY_FOR_REVIEW" }, data: { status: "APPROVED", approvalAt: new Date(), lastError: null } });
+  const updated = await prisma.dependencyJob.updateMany({ where: { id: jobId, ownerId: user.id, status: "READY_FOR_REVIEW", batchId: null }, data: { status: "APPROVED", approvalAt: new Date(), lastError: null } });
   if (!updated.count) return { ok: false, message: _code("actions.m8d3a960aae") };
   await logApproval(jobId, _code("actions.me9ca91bafb"));
   refresh();
@@ -268,7 +336,7 @@ export async function approveDependencyPreparation(jobId: string): Promise<Depen
 
 export async function approveDependencyPublish(jobId: string): Promise<DependencyActionState> {
   const user = await requireUser();
-  const updated = await prisma.dependencyJob.updateMany({ where: { id: jobId, ownerId: user.id, status: "READY_TO_PUSH", diffHash: { not: null } }, data: { status: "PUBLISHING", publishApprovalAt: new Date(), lastError: null } });
+  const updated = await prisma.dependencyJob.updateMany({ where: { id: jobId, ownerId: user.id, status: "READY_TO_PUSH", diffHash: { not: null }, batchId: null }, data: { status: "PUBLISHING", publishApprovalAt: new Date(), lastError: null } });
   if (!updated.count) return { ok: false, message: _code("actions.m7a00b50a6b") };
   await logApproval(jobId, _code("actions.md438262feb"));
   refresh();
@@ -295,6 +363,6 @@ export async function retryDependencyStep(jobId: string): Promise<DependencyActi
 
 export async function markDependencySeen(jobIds: string[]): Promise<void> {
   const user = await requireUser();
-  const ids = Array.isArray(jobIds) ? jobIds.filter((id) => typeof id === "string" && /^[a-z0-9]{10,40}$/i.test(id)).slice(0, 50) : [];
+  const ids = Array.isArray(jobIds) ? jobIds.filter((id) => typeof id === "string" && /^(batch:)?[a-z0-9]{8,40}$/i.test(id)).slice(0, 50) : [];
   await markDependencyJobsSeen(user.id, ids);
 }

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ users: vi.fn(), logs: vi.fn(), createMany: vi.
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { findMany: mocks.users }, dailyUpdateDigest: { findMany: mocks.logs, createMany: mocks.createMany, create: mocks.create, update: mocks.update } } }));
 vi.mock("@/lib/services", () => ({ loadServices: mocks.services }));
 vi.mock("@/lib/alert", () => ({ sendToChannel: mocks.send }));
-import { groupDigest, htmlDigest, sendDueDailyUpdateDigests } from "./daily-update-digest";
+import { htmlDigest, sendDueDailyUpdateDigests } from "./daily-update-digest";
 
 const morning = new Date("2026-11-13T08:30:00Z"); // 09:30 in Berlin
 it("renders the English report, including summary, security badge and language", () => {
@@ -59,25 +59,21 @@ describe("Tagesbericht: Minor-Empfehlungen", () => {
   });
 });
 
-describe("Tagesbericht: gleiche Updates gruppiert", () => {
+describe("Tagesbericht: strikt pro Dienst", () => {
   const ts = (from: string) => ({ name: "typescript", from, to: "7.0.2", security: false, minor: false, recommended: "Nativer Compiler", hold: true, known: ["typescript-eslint unterstützt TS 7.0 nicht"] });
   const items = [
     { service: "Messenger", packages: [ts("5.9.3")] },
     { service: "Wizard", packages: [ts("5.7.3")] },
     { service: "Pilot", packages: [ts("5.9.3"), { name: "prisma", from: "5.22.0", to: "7.10.1", security: false, minor: false }] },
   ];
-  it("zieht dasselbe Update aus mehreren Diensten zusammen, Abweichler mit Ausgangsversion", () => {
-    const { shared, single } = groupDigest(items);
-    expect(shared).toHaveLength(1);
-    expect(shared[0].from).toBe("5.9.3");
-    expect(shared[0].services.map((s) => s.service)).toEqual(["Messenger", "Wizard", "Pilot"]);
-    expect(single).toEqual([{ service: "Pilot", packages: [items[2].packages[1]] }]);
-  });
-  it("nennt das Problem einmal, die Dienste darunter, und sagt abwarten statt empfohlen", () => {
+  it("fasst gleiche Updates nicht zusammen, jeder Dienst steht mit allen Paketen für sich", () => {
     const html = htmlDigest(items, morning);
-    expect(html.match(/Bekanntes Problem:/g)).toHaveLength(1);
-    expect(html).toContain("In 3 Diensten: Messenger, Wizard (von 5.7.3), Pilot");
+    expect(html).not.toContain("In mehreren Diensten");
+    expect(html.match(/Bekanntes Problem:/g)).toHaveLength(3);
+    const order = ["Messenger", "Wizard", "Pilot"].map((name) => html.indexOf(`>${name}<`));
+    expect(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1]))).toBe(true);
+    expect(html.indexOf(">prisma<")).toBeGreaterThan(order[2]);
+    expect(html).toContain("5.7.3");
     expect(html).toContain("Major, abwarten: Nativer Compiler");
-    expect(html).not.toContain("Major, empfohlen");
   });
 });

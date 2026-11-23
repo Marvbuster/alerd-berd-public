@@ -7,6 +7,7 @@ import { Clock } from "@/components/Clock";
 import { logout } from "@/app/login/actions";
 import { currentUser } from "@/lib/auth";
 import { AppNavigation, SettingsLink } from "@/components/AppNavigation";
+import { loadActiveBatchId } from "@/lib/dependency-batch";
 import { Icon } from "@/components/Icon";
 import { AlerdLogo } from "@/components/AlerdLogo";
 import { StickyTopbar } from "@/components/StickyTopbar";
@@ -40,7 +41,10 @@ export default async function RootLayout({
   const user = await currentUser();
   const locale = await getLocale();
   const messages = await getMessages();
-  const notifications = user ? await loadDependencyNotifications(user.id, undefined, locale).catch(() => []) : [];
+  const [notifications, activeBatchId] = user ? await Promise.all([
+    loadDependencyNotifications(user.id, undefined, locale).catch(() => []),
+    loadActiveBatchId(user.id).catch(() => null),
+  ]) : [[], null];
   return (
     <html lang={locale}>
       <body className="min-h-screen antialiased">
@@ -49,7 +53,7 @@ export default async function RootLayout({
         <StickyTopbar><div className="app-topbar-inner">
           <Link href="/" className="app-brand"><AlerdLogo size={42} className="mr-1" />{_t(_locale, "app.m6810f85490")}<span className="font-normal text-[var(--fg-dim)]">{_t(_locale, "app.m726f5de6d6")}</span></Link>
           <div className="app-account"><span className="hidden sm:inline"><Clock /></span>{user && <><span className="hidden md:inline">{user.name || user.email}</span><NotificationHub initial={notifications} /><SettingsLink /><form action={logout}><button type="submit" className="icon-button" title={_t(_locale, "app.m545f8be33b")} aria-label={_t(_locale, "app.m545f8be33b")}><Icon name="logout" size={18} /></button></form></>}</div>
-        </div>{user && <AppNavigation />}</StickyTopbar>
+        </div>{user && <AppNavigation batchId={activeBatchId} />}</StickyTopbar>
         <div id="main-content">{children}</div>
         </NextIntlClientProvider>
       </body>

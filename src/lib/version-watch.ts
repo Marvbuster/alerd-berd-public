@@ -291,8 +291,28 @@ function majorIssuesOf(meta: unknown): Record<string, MajorIssues> | undefined {
   return value && typeof value === "object" ? value as Record<string, MajorIssues> : undefined;
 }
 
+// Das Referenzwissen (volle Versionslisten, Advisories) ist groß und ändert sich
+// nur, wenn die Versionsüberwachung neu abruft. Jede Seite und jeder Refresh im
+// 4-Sekunden-Takt hat es trotzdem neu geladen und geparst, teils zweimal pro Render.
+// Deshalb im Prozess merken, solange beobachtete Namen und Datenstand gleich sind.
+// Der Stand ist eine billige Abfrage über Zeitstempel, kein Laden der Inhalte.
+let watchCache: { key: string; ctx: Promise<WatchContext> } | null = null;
+
 export async function loadWatchContext(): Promise<WatchContext> {
-  const names = await watchedPackageNames();
+  const [names, [stamp]] = await Promise.all([
+    watchedPackageNames(),
+    prisma.$queryRaw<{ r: Date | null; a: Date | null; n: bigint }[]>`SELECT (SELECT max("updatedAt") FROM "PackageRegistry") AS r, (SELECT max("fetchedAt") FROM "Advisory") AS a, (SELECT count(*) FROM "Advisory") AS n`,
+  ]);
+  const key = JSON.stringify([[...names].sort(), stamp?.r?.getTime() ?? null, stamp?.a?.getTime() ?? null, String(stamp?.n ?? 0)]);
+  if (watchCache?.key === key) return watchCache.ctx;
+  const ctx = buildWatchContext(names);
+  watchCache = { key, ctx };
+  // Fehler nicht merken, der nächste Aufruf versucht es neu.
+  ctx.catch(() => { if (watchCache?.ctx === ctx) watchCache = null; });
+  return ctx;
+}
+
+async function buildWatchContext(names: string[]): Promise<WatchContext> {
   const [advs, regs, nodeRow] = await Promise.all([
     prisma.advisory.findMany({ where: { packageName: { in: names } } }),
     prisma.packageRegistry.findMany({ where: { name: { in: names } } }),

@@ -3,6 +3,7 @@ import { scanDueRepositories } from "@/lib/repository-watch";
 import { runChecks } from "@/lib/check";
 import { sendDueDailyUpdateDigests } from "@/lib/daily-update-digest";
 import { pruneOldChecks } from "@/lib/check-retention";
+import { syncDueCoolifyConnections } from "@/lib/coolify";
 
 // Von einem externen Scheduler (Coolify Scheduled Task / Cron) getriggert.
 // Schutz über gemeinsames Bearer-Secret (RUN_CHECKS_SECRET).
@@ -25,6 +26,8 @@ export async function GET(req: Request) {
       sendDueDailyUpdateDigests().catch((error) => console.error("[digest] send failed:", error)),
       // Checks älter als 14 Tage, im Takt der Läufe, höchstens 50.000 Zeilen pro Lauf.
       pruneOldChecks().catch((error) => console.error("[checks] prune failed:", error)),
+      // Coolify-Abgleich (Apps, Domains, Auto-Deploy), je Verbindung höchstens alle 15 Minuten.
+      syncDueCoolifyConnections().catch((error) => console.error("[coolify] sync failed:", error)),
     ]);
   });
   return NextResponse.json(summary, { status: 200 });

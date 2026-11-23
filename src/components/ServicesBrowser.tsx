@@ -10,11 +10,14 @@ import { PageHeader } from "./PageHeader";
 import { useLiveNodes } from "./useLiveNodes";
 import { ServiceStatusSection } from "./ServiceStatus";
 import { ServicePicker } from "./ServicePicker";
+import { BatchUpdatePicker, type BatchService } from "./BatchUpdatePicker";
 import { CHAT_SUFFIX } from "./DependencyAssistant";
 import { liveUptimeMs, type VizNode, type WatchLevel } from "@/lib/viz";
 import type { PoolApp } from "@/lib/services";
 import { aggregateStatus, localizedCHECK_KIND_LABEL as CHECK_KIND_LABEL, checkTally, matchesFilter, matchesQuery, localizedSERVICE_GROUPS as SERVICE_GROUPS, serviceGroup, localizedSTATUS_META as STATUS_META, STATUS_ORDER, type ServiceFilter } from "@/lib/service-logic";
 
+// Abstand des klebenden Panels unter der Kopfleiste (wie .service-panel top im CSS).
+const STICKY_TOP = 112;
 export type ServiceItem = {
   id: string; name: string; domain: string | null; checkIds: string[]; applicationId: string; missing: boolean; meta: string;
   liveNext: string | null; watchLevel: WatchLevel | null; updateTarget: string | null; jobActive: boolean; search: string;
@@ -100,8 +103,9 @@ function OtherMonitors({ monitors, always = false }: { monitors: VizNode[]; alwa
   </section>;
 }
 
-export function ServicesBrowser({ items, pool, otherIds, connections, nodes: initialNodes, initialFilter, initialQuery }: {
+export function ServicesBrowser({ items, pool, otherIds, connections, nodes: initialNodes, batch, initialFilter, initialQuery }: {
   items: ServiceItem[]; pool: PoolApp[]; otherIds: string[]; connections: { id: string; label: string }[]; nodes: VizNode[]; initialFilter: string; initialQuery: string;
+  batch: { services: BatchService[]; manualDeploy: string[]; hasClaude: boolean; hasLocalNode: boolean; localNodeOnline: boolean; activeId: string | null };
 }) {
   const _locale = _useLocale();
   const nodes = useLiveNodes(initialNodes);
@@ -113,6 +117,8 @@ export function ServicesBrowser({ items, pool, otherIds, connections, nodes: ini
   const [picked, setPicked] = useState(false);
   // Rechts entweder der gewählte Dienst oder „Dienst anlegen“. Ohne Dienste gleich der Dialog.
   const [adding, setAdding] = useState(items.length === 0);
+  // „Alle aktualisieren“ startet in einem eigenen Fenster, die Sidebar bleibt beim Dienst.
+  const [batchOpen, setBatchOpen] = useState(false);
   const mobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia("(max-width: 800px)").matches, () => false);
   const newCount = pool.filter((p) => p.isNew).length;
   // Weitere Monitore nur im Filter „Alle“, die Suche gilt auch für sie.
@@ -134,26 +140,24 @@ export function ServicesBrowser({ items, pool, otherIds, connections, nodes: ini
   const visible = SERVICE_GROUPS(_locale).flatMap((g) => sorted.filter((s) => s.group === g.id && matchesFilter(s, filter) && matchesQuery(s, query)));
   const selected = visible.find((s) => s.id === selectedId) ?? visible[0];
 
-  // Das rechte Panel endet immer am unteren Fensterrand: Höhe = Viewport minus
-  // aktueller Abstand von oben. Solange es noch nicht klebt, ist der Abstand
-  // größer, also das Panel kürzer, sonst müsste man erst die Seite und dann das
-  // Panel scrollen, um ganz nach unten zu kommen.
+  // Das rechte Panel klebt unter der Kopfleiste. Ist es höher als das Fenster,
+  // darf es aus dem Viewport laufen: top wird so weit negativ, dass es erst klebt,
+  // wenn sein unteres Ende den Fensterrand erreicht. Eine Scrollbar, die der Seite.
   const detailRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const wrap = detailRef.current;
     if (!wrap) return;
-    let frame = 0;
+    const panel = wrap.firstElementChild as HTMLElement | null;
+    if (!panel) return;
     const fit = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const panel = wrap.firstElementChild as HTMLElement | null;
-        if (panel) wrap.style.setProperty("--panel-top", `${Math.max(0, panel.getBoundingClientRect().top)}px`);
-      });
+      const top = Math.min(STICKY_TOP, window.innerHeight - panel.offsetHeight - 16);
+      wrap.style.setProperty("--panel-sticky-top", `${top}px`);
     };
     fit();
-    window.addEventListener("scroll", fit, { passive: true });
+    const observer = new ResizeObserver(fit);
+    observer.observe(panel);
     window.addEventListener("resize", fit);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener("scroll", fit); window.removeEventListener("resize", fit); };
+    return () => { observer.disconnect(); window.removeEventListener("resize", fit); };
   }, [adding, selected?.id, mobile]);
 
   // Auswahl aus der URL nur beim Laden und bei echten Hash-Wechseln (Glocke,
@@ -228,8 +232,11 @@ export function ServicesBrowser({ items, pool, otherIds, connections, nodes: ini
   </article>;
 
   return <>
+    {batchOpen && <BatchUpdatePicker services={batch.services} manualDeploy={batch.manualDeploy} hasClaude={batch.hasClaude} hasLocalNode={batch.hasLocalNode} localNodeOnline={batch.localNodeOnline} onCancel={() => setBatchOpen(false)} />}
     <PageHeader title={_t(_locale, "ServicesBrowser.ma6f5acc69d")} description={_t(_locale, "ServicesBrowser.m39f9bd86e2")} icon="layers" actions={<>
       <nav className="view-toggle" aria-label={_t(_locale, "ServicesBrowser.ma6d6105cf9")}><Link href="/services" aria-current="page">{_t(_locale, "ServicesBrowser.m7343841e72")}</Link><Link href="/services?view=sphere">{_t(_locale, "ServicesBrowser.mc9e8a01ef4")}</Link></nav>
+      {batch.activeId ? <Link href={`/batch/${batch.activeId}`} className="btn btn--ghost"><Icon name="refresh" size={18} />{_t(_locale, "BatchUpdate.running")}</Link>
+        : batch.services.length > 0 && <button type="button" className="btn btn--ghost" onClick={() => setBatchOpen(true)}><Icon name="refresh" size={18} />{_t(_locale, "BatchUpdate.button")}<span className="service-new-count">{batch.services.length}</span></button>}
       <button type="button" className="btn" onClick={() => { setAdding(true); setPicked(true); }}><Icon name="plus" size={18} />{_t(_locale, "ServicesBrowser.m99645c3124")}{newCount > 0 && <span className="service-new-count">{newCount} {_t(_locale, "ServicesBrowser.m9897e61a32")}</span>}</button>
     </>} />
     {!items.length ? <div className="inventory-workspace">

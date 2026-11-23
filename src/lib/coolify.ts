@@ -2,7 +2,7 @@ import { messageCode as _code, MessageError as _Error, errorMessage } from "@/i1
 import { randomUUID } from "node:crypto";
 import { prisma } from "./prisma";
 import { decryptCredential } from "./credentials";
-import { fetchCoolifyApplications } from "./coolify-client";
+import { fetchCoolifyApplications, fetchCoolifyAutoDeploy } from "./coolify-client";
 
 export async function syncCoolifyConnection(id: string, ownerId: string) {
   const now = new Date();
@@ -16,6 +16,7 @@ export async function syncCoolifyConnection(id: string, ownerId: string) {
     const connection = await prisma.coolifyConnection.findFirstOrThrow({ where: { id, ownerId } });
     const token = decryptCredential(connection.tokenEncrypted, `${ownerId}:${connection.baseUrl}`);
     const apps = await fetchCoolifyApplications(connection.baseUrl, token);
+    const autoDeploy = await readAutoDeploy(connection.baseUrl, token, id, apps.map((a) => a.uuid));
     await prisma.$transaction(async (tx) => {
       // Validate the lease inside the transaction so an expired job cannot overwrite newer data.
       const valid = await tx.coolifyConnection.updateMany({
@@ -26,8 +27,9 @@ export async function syncCoolifyConnection(id: string, ownerId: string) {
         // hiddenAt belongs to Alerd; preserve it across imports and reappearances.
         await tx.coolifyApplication.upsert({
           where: { connectionId_uuid: { connectionId: id, uuid: app.uuid } },
-          create: { id: randomUUID(), connectionId: id, ...app, lastSeenAt: now },
-          update: { ...app, lastSeenAt: now, missingSince: null },
+          create: { id: randomUUID(), connectionId: id, ...app, autoDeploy: autoDeploy.get(app.uuid) ?? null, lastSeenAt: now },
+          // Nicht gelesen (Fehler, kein Dienst): den letzten bekannten Wert behalten.
+          update: { ...app, ...(autoDeploy.has(app.uuid) ? { autoDeploy: autoDeploy.get(app.uuid) } : {}), lastSeenAt: now, missingSince: null },
         });
       }
       await tx.coolifyApplication.updateMany({
@@ -45,6 +47,19 @@ export async function syncCoolifyConnection(id: string, ownerId: string) {
   } finally {
     await prisma.coolifyConnection.updateMany({ where: { id, ownerId, syncLockedUntil: lease }, data: { syncLockedUntil: null } });
   }
+}
+
+// Auto-Deploy nur für angelegte Dienste lesen, je App eine Abfrage, fünf zur Zeit.
+// Eine gescheiterte Abfrage lässt den Dienst aus, der Abgleich selbst läuft weiter.
+async function readAutoDeploy(baseUrl: string, token: string, connectionId: string, uuids: string[]) {
+  const services = await prisma.coolifyApplication.findMany({ where: { connectionId, uuid: { in: uuids }, serviceAt: { not: null } }, select: { uuid: true }, take: 60 });
+  const result = new Map<string, boolean>();
+  for (let i = 0; i < services.length; i += 5) {
+    const chunk = services.slice(i, i + 5);
+    const values = await Promise.allSettled(chunk.map((s) => fetchCoolifyAutoDeploy(baseUrl, token, s.uuid)));
+    values.forEach((v, j) => { if (v.status === "fulfilled" && v.value !== null) result.set(chunk[j].uuid, v.value); });
+  }
+  return result;
 }
 
 export async function syncDueCoolifyConnections() {

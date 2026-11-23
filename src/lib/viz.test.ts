@@ -4,7 +4,7 @@ import { healthColor, historyPointKind, metricSeverity, parseHealthPayload, STAT
 describe("STATUS_COLOR (Farb-Kontrakt)", () => {
   it("hat die festgelegten Hex-Werte", () => {
     expect(STATUS_COLOR).toEqual({
-      UP: "#69dda9",
+      UP: "#7fdc72",
       DEGRADED: "#f8c66b",
       DOWN: "#ff8b93",
       UNKNOWN: "#a3b6cf",

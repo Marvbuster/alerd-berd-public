@@ -652,3 +652,48 @@ export function staleJobDirs(dirs, jobs, now, keepMs = RETRY_KEEP_MS) {
 export function compareContains(json) {
   return !!json && (json.status === "ahead" || json.status === "identical");
 }
+
+// Sammel-Update: Nach Freigabe 2 geht immer nur ein Dienst des Laufs in den Push.
+// Der nächste folgt, wenn der vorige live ist (LIVE_REVIEW zählt schon, das Fazit
+// braucht keinen Platz). Scheitert ein freigegebener Push, pausiert der Lauf.
+// Die Reihenfolge steckt in publishApprovalAt (Freigabe 2 staffelt die Zeitstempel).
+export const BATCH_IN_FLIGHT = ["PUBLISHING", "DEPLOYING"];
+export function batchPushStep(batch, jobs) {
+  if (batch.cancelledAt || batch.pausedAt) return null;
+  const approved = jobs.filter((j) => j.publishApprovalAt);
+  const waiting = approved.filter((j) => j.status === "READY_TO_PUSH")
+    .sort((a, b) => new Date(a.publishApprovalAt).getTime() - new Date(b.publishApprovalAt).getTime());
+  if (!waiting.length) return null;
+  const failed = approved.find((j) => RETRYABLE_STATUSES.includes(j.status));
+  if (failed) return { pause: failed };
+  if (approved.some((j) => BATCH_IN_FLIGHT.includes(j.status))) return null;
+  return { promote: waiting[0] };
+}
+
+// Wo ein Sammel-Update steht, abgeleitet aus seinen Jobs. Reihenfolge ist Absicht:
+// Eine Sammelfreigabe erscheint erst, wenn kein Job mehr im Schritt davor steckt.
+const BATCH_TERMINAL = ["FAILED", "CANCELLED", "PUSHED", "LIVE", "LIVE_UNVERIFIED", "DEPLOY_FAILED"];
+const BATCH_ANALYSIS = ["DRAFT", "AWAITING_CLAUDE", "AWAITING_NODE", "ANALYZING"];
+const BATCH_PREPARATION = ["APPROVED", "RUNNING", "VERIFYING"];
+const BATCH_PUBLISH = ["PUBLISHING", "PUSHED", "DEPLOYING", "LIVE_REVIEW"];
+export function batchStage(batch, jobs) {
+  if (batch.cancelledAt) return "cancelled";
+  const has = (statuses) => jobs.some((j) => statuses.includes(j.status));
+  const pushApproved = (j) => j.status === "READY_TO_PUSH" && !!j.publishApprovalAt;
+  if (!jobs.some((j) => !BATCH_TERMINAL.includes(j.status))) return "done";
+  if (batch.pausedAt) return "paused";
+  if (has(BATCH_ANALYSIS)) return "analyzing";
+  if (has(["READY_FOR_REVIEW"])) return "approval1";
+  if (has(BATCH_PREPARATION)) return "preparing";
+  if (jobs.some((j) => j.status === "READY_TO_PUSH" && !pushApproved(j))) return "approval2";
+  return has(BATCH_PUBLISH) || jobs.some(pushApproved) ? "publishing" : "done";
+}
+
+// Stufen, die per Web Push und in der Glocke melden: Man ist dran oder es ist vorbei.
+export const BATCH_NOTIFY_STAGES = ["approval1", "approval2", "paused", "done"];
+
+// Web Push für ein Sammel-Update, je gemeldeter Stufe einmal.
+export function batchPushText(stage, { count }, _locale = "de") {
+  if (!BATCH_NOTIFY_STAGES.includes(stage)) return null;
+  return { title: _t(_locale, `BatchUpdate.push_${stage}_title`), body: _t(_locale, `BatchUpdate.push_${stage}_body`, { count }) };
+}

@@ -110,6 +110,21 @@ export async function fetchCoolifyApplications(baseUrl: string, token: string) {
   return parseCoolifyApplications(await coolifyGet(baseUrl, "/applications", token));
 }
 
+// „Auto Deploy“ einer App. Die Liste /applications lädt die Einstellungen nicht mit,
+// erst die Einzelabfrage hängt sie als settings an. Coolify liefert true/false oder 0/1.
+export function parseCoolifyAutoDeploy(data: unknown): boolean | null {
+  const settings = data && typeof data === "object" ? (data as { settings?: unknown }).settings : null;
+  const value = settings && typeof settings === "object" ? (settings as { is_auto_deploy_enabled?: unknown }).is_auto_deploy_enabled : undefined;
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  return null;
+}
+
+export async function fetchCoolifyAutoDeploy(baseUrl: string, token: string, uuid: string) {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(uuid)) throw new _Error("validation.m9f22eae99c");
+  return parseCoolifyAutoDeploy(await coolifyGet(baseUrl, `/applications/${uuid}`, token));
+}
+
 // Nur die Namen der Env-Variablen einer App, Werte werden sofort verworfen.
 // Coolify-eigene Variablen und Preview-Duplikate fallen weg.
 export function parseCoolifyEnvKeys(data: unknown): string[] {

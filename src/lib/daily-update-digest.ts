@@ -26,38 +26,10 @@ type DigestItem = { service: string; packages: { name: string; from: string; to:
 const PUBLIC_URL = publicUrl();
 
 type DigestPkg = DigestItem["packages"][number];
-export type DigestGroup = { pkg: DigestPkg; from: string; services: { service: string; from: string }[] };
 
-// Dasselbe Update in mehreren Diensten (z. B. eine neue TypeScript-Major) steht
-// einmal oben, darunter die Dienste. Nur die Ausgangsversion darf abweichen.
-export function groupDigest(items: DigestItem[]): { shared: DigestGroup[]; single: DigestItem[] } {
-  const key = (p: DigestPkg) => JSON.stringify([p.name, p.to, p.security, !!p.minor, p.recommended ?? null, !!p.hold, p.issues ?? null, p.known ?? []]);
-  const count = new Map<string, number>();
-  for (const item of items) for (const p of item.packages) count.set(key(p), (count.get(key(p)) ?? 0) + 1);
-  const shared = new Map<string, DigestGroup>();
-  const single: DigestItem[] = [];
-  for (const item of items) {
-    const own: DigestPkg[] = [];
-    for (const p of item.packages) {
-      const k = key(p);
-      if ((count.get(k) ?? 0) < 2) { own.push(p); continue; }
-      const group = shared.get(k) ?? { pkg: p, from: "", services: [] };
-      group.services.push({ service: item.service, from: p.from });
-      shared.set(k, group);
-    }
-    if (own.length) single.push({ service: item.service, packages: own });
-  }
-  // Häufigste Ausgangsversion in die Kopfzeile, Abweichler stehen beim Dienst.
-  for (const group of shared.values()) {
-    const tally = new Map<string, number>();
-    for (const s of group.services) tally.set(s.from, (tally.get(s.from) ?? 0) + 1);
-    group.from = [...tally].sort((a, b) => b[1] - a[1])[0][0];
-  }
-  return { shared: [...shared.values()], single };
-}
-
+// Strikt pro Dienst: Jeder Dienst steht für sich, auch wenn dasselbe Update in
+// mehreren Diensten ansteht. So liest man die Mail Dienst für Dienst durch.
 const kindLabel = (p: DigestPkg, locale = "de") => p.recommended ? _t(locale, p.hold ? "mail.majorHold" : "mail.majorRecommended", { title: p.recommended }) : null;
-const serviceList = (g: DigestGroup, locale = "de") => g.services.map((s) => s.from === g.from ? s.service : _t(locale, "mail.serviceFrom", { name: s.service, from: s.from || "?" })).join(", ");
 
 function textPkg(p: DigestPkg, from: string, _locale: string = "de") {
   const kind = kindLabel(p, _locale);
@@ -66,10 +38,8 @@ function textPkg(p: DigestPkg, from: string, _locale: string = "de") {
 
 function textDigest(items: DigestItem[], _locale: string = "de") {
   if (!items.length) return _t(_locale, "mail.me6f7a63c32");
-  const { shared, single } = groupDigest(items);
   return [_t(_locale, "mail.m5e3a170e35"), "", _t(_locale, "mail.me82ea33e8b"), "",
-    ...(shared.length ? [_t(_locale, "mail.m34b277d816"), ...shared.flatMap((g) => [textPkg(g.pkg, g.from, _locale), _t(_locale, "mail.m3f3b7b014d", { value0: g.services.length, value1: serviceList(g, _locale) })]), ""] : []),
-    ...single.flatMap((item) => [item.service, ...item.packages.map((p) => textPkg(p, p.from, _locale)), ""]),
+    ...items.flatMap((item) => [item.service, ...item.packages.map((p) => textPkg(p, p.from, _locale)), ""]),
     "", _t(_locale, "mail.mde68cb7681", { value0: PUBLIC_URL }), _t(_locale, "mail.me2ff8f1d55"), "", "Alerd Berd"].join("\n");
 }
 
@@ -91,11 +61,9 @@ function htmlPkg(p: DigestPkg, from: string, extra = "", _locale: string = "de")
 export function htmlDigest(items: DigestItem[], now: Date, _locale: string = "de") {
   const day = new Intl.DateTimeFormat(intlLocale(_locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(now);
   const count = items.reduce((total, item) => total + item.packages.length, 0);
-  const { shared, single } = groupDigest(items);
   const block = (head: string, body: string) => `<tr><td style="padding:18px 24px;border-top:1px solid ${C.line}"><strong style="color:${C.fg};font-size:15px">${head}</strong>${body}</td></tr>`;
   const rows = items.length
-    ? (shared.length ? block(_t(_locale, "mail.m34b277d816"), shared.map((g) => htmlPkg(g.pkg, g.from, _t(_locale, "mail.m43bafd1a47", { value0: C.fg, value1: g.services.length, value2: esc(serviceList(g, _locale)) }), _locale)).join("")) : "")
-      + single.map((item) => block(esc(item.service), item.packages.map((p) => htmlPkg(p, p.from, "", _locale)).join(""))).join("")
+    ? items.map((item) => block(esc(item.service), item.packages.map((p) => htmlPkg(p, p.from, "", _locale)).join(""))).join("")
     : _t(_locale, "mail.m33b818db79", { value0: C.line, value1: C.dim });
   return _t(_locale, "mail.m802577e107", { value0: C.bg, value1: C.fg, value2: C.bg, value3: C.panel, value4: C.line, value5: PUBLIC_URL, value6: wordmark("Alerd", "Reperd", 30), value7: C.fg, value8: esc(day), value9: C.dim, value10: items.length ? _t(_locale, "mail.summary", { count, packageSuffix: count === 1 ? "" : _locale === "en" ? "s" : "e", services: items.length, serviceSuffix: items.length === 1 ? "" : _locale === "en" ? "s" : "en" }) : _t(_locale, "mail.allCurrent"), value11: rows, value12: C.line, value13: PUBLIC_URL, value14: C.cyan, value15: C.dim, value16: wordmark("Alerd", "Berd", 14) });
 }

@@ -22,6 +22,7 @@ const NEW_FOR_MS = 7 * 24 * 60 * 60_000;
 export type ServiceApp = {
   id: string; connectionLabel: string; status: string | null; domains: string | null;
   repository: string | null; branch: string | null; baseDirectory: string; buildPack: string | null; missing: boolean;
+  autoDeploy: boolean | null;
   watch: {
     id: string; repository: string; branch: string; manifestPath: string; lockfilePath: string; lastError: string | null; buildEnv: string | null;
     snapshot: { commitSha: string; declaredVersion: string | null; lockedVersion: string | null; scannedAt: Date; dependencies: unknown } | null;
@@ -66,12 +67,19 @@ export type ServicePackage = {
 
 export type PoolApp = { id: string; name: string; domain: string | null; repository: string | null; connectionLabel: string; isNew: boolean };
 
-async function loadJobs(ownerId: string) {
+// Nur der letzte Job je Dienst zählt (Chat, Phase, „schon geliefert“). Früher
+// kamen die letzten 200 Jobs samt je 50 Nachrichten, bei jedem Refresh alle 4 s
+// Megabytes an Analysen. Erst die Ids per DISTINCT ON, dann nur diese Jobs.
+export async function loadJobs(ownerId: string, applicationId?: string) {
+  const latest = applicationId
+    ? await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM "DependencyJob" WHERE "ownerId" = ${ownerId} AND "applicationId" = ${applicationId} ORDER BY "updatedAt" DESC LIMIT 1`
+    : await prisma.$queryRaw<{ id: string }[]>`SELECT DISTINCT ON ("applicationId") id FROM "DependencyJob" WHERE "ownerId" = ${ownerId} ORDER BY "applicationId", "updatedAt" DESC`;
+  if (!latest.length) return [];
   return prisma.dependencyJob.findMany({
-    where: { ownerId }, orderBy: { updatedAt: "desc" }, take: 200,
+    where: { ownerId, id: { in: latest.map((j) => j.id) } }, orderBy: { updatedAt: "desc" },
     select: {
       id: true, applicationId: true, packageName: true, targetVersion: true, packages: true, model: true, engine: true, status: true, updatedAt: true,
-      workerLockedUntil: true, workerAttemptAt: true, lastError: true, validationLog: true, diffHash: true, publishApprovalAt: true, publishedAt: true, progress: true,
+      workerLockedUntil: true, workerAttemptAt: true, lastError: true, validationLog: true, diffHash: true, publishApprovalAt: true, publishedAt: true, progress: true, batchId: true,
       messages: { orderBy: { createdAt: "asc" }, take: 50, select: { id: true, role: true, content: true, createdAt: true } },
     },
   });
@@ -87,15 +95,17 @@ function liveVersion(nodes: VizNode[]): string | null {
   return versions.length === 1 ? versions[0] : versions.length > 1 ? "mehrere" : null;
 }
 
-export async function loadServices(ownerId: string, now = new Date()): Promise<{ services: ServiceRecord[]; pool: PoolApp[]; others: string[]; nodes: VizNode[]; context: WatchContext }> {
+// only: genau ein Dienst (Chat-Fenster auf anderen Seiten). services enthält dann
+// höchstens diesen, pool, others und mergeMonitors sind unvollständig und nicht zu verwenden.
+export async function loadServices(ownerId: string, now = new Date(), only?: string): Promise<{ services: ServiceRecord[]; pool: PoolApp[]; others: string[]; nodes: VizNode[]; context: WatchContext }> {
   const [nodes, context, connections, jobs] = await Promise.all([
-    loadMonitorNodes(ownerId),
+    loadMonitorNodes(ownerId, only),
     loadWatchContext(),
     prisma.coolifyConnection.findMany({
       where: { ownerId }, orderBy: { createdAt: "asc" },
-      select: { label: true, applications: { orderBy: { name: "asc" }, select: {
+      select: { label: true, applications: { ...(only ? { where: { id: only } } : {}), orderBy: { name: "asc" }, select: {
         id: true, name: true, status: true, domains: true, repository: true, branch: true, baseDirectory: true,
-        buildPack: true, missingSince: true, serviceAt: true, firstSeenAt: true,
+        buildPack: true, missingSince: true, serviceAt: true, firstSeenAt: true, autoDeploy: true,
         repositoryWatch: { select: {
           id: true, repository: true, branch: true, manifestPath: true, lockfilePath: true, lastError: true, buildEnv: true,
           snapshot: { select: { commitSha: true, declaredVersion: true, lockedVersion: true, scannedAt: true, dependencies: true } },
@@ -103,7 +113,7 @@ export async function loadServices(ownerId: string, now = new Date()): Promise<{
         } },
       } } },
     }),
-    loadJobs(ownerId),
+    loadJobs(ownerId, only),
   ]);
   const latestJob = new Map<string, (typeof jobs)[number]>();
   for (const job of jobs) if (!latestJob.has(job.applicationId)) latestJob.set(job.applicationId, job);
@@ -164,7 +174,7 @@ export async function loadServices(ownerId: string, now = new Date()): Promise<{
       id: `app-${a.id}`, name: a.name, domain: hostOf(a.domains?.split(/[\s,]+/)[0]), checkIds: checks.map((n) => n.id),
       app: {
         id: a.id, connectionLabel: a.connectionLabel, status: a.status, domains: a.domains, repository: a.repository, branch: a.branch,
-        baseDirectory: a.baseDirectory, buildPack: a.buildPack, missing: !!a.missingSince, watch: a.repositoryWatch,
+        baseDirectory: a.baseDirectory, buildPack: a.buildPack, missing: !!a.missingSince, autoDeploy: a.autoDeploy, watch: a.repositoryWatch,
       },
       liveNext: nextPkg ? liveVersion(checks) : null, watchLevel: nextPkg ? worstLevel(checks) : null, latestPatch, updateTarget,
       jobActive: !!job && !TERMINAL_STATUSES.includes(job.status), job,
